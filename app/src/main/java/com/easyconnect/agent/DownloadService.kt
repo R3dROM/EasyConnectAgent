@@ -5,17 +5,27 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.net.InetAddresses
+import android.net.IpPrefix
+import android.net.StaticIpConfiguration
 import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.NetworkInterface
 import java.util.concurrent.TimeUnit
 import kotlin.jvm.java
 
@@ -43,7 +53,7 @@ class DownloadService : Service()
         val outputDir = File(getExternalFilesDir(null), "$bundle/files/")
 
         CoroutineScope(Dispatchers.IO).launch {
-            downloadExperience(baseUrl, outputDir)
+            downloadExperience(baseUrl, outputDir, bundle)
             stopSelf()
         }
 
@@ -95,10 +105,11 @@ class DownloadService : Service()
         return filesList
     }
 
-    private suspend fun downloadExperience(baseUrl: String, outputDir: File) {
+    private suspend fun downloadExperience(baseUrl: String, outputDir: File, bundle: String) {
 
         val manifestUrl = "$baseUrl/manifest.json"
 
+        println(baseUrl)
         val manifestRaw = downloadManifestRaw(manifestUrl)
             ?: return
 
@@ -113,16 +124,27 @@ class DownloadService : Service()
             }
             Log.d("DEPLOY", "Descargando ${file.path}")
 
-            downloadFile(baseUrl, file, outputDir)
+            downloadFile(baseUrl, file, outputDir, bundle)
         }
 
         Log.d("DEPLOY", "Descarga completa")
+        sendStatus(getIpAddress(), bundle, "SUCCESS", baseUrl)
     }
 
+    private fun getIpAddress(): String
+    {
+        NetworkInterface.getNetworkInterfaces()?.toList()?.map { networkInterface ->
+            networkInterface.inetAddresses?.toList()?.find {
+                !it.isLoopbackAddress && it is Inet4Address
+            }?.let { return it.hostAddress }
+        }
+        return ""
+    }
     private suspend fun downloadFile(
         baseUrl: String,
         file: ManifestFile,
-        outputDir: File
+        outputDir: File,
+        bundle: String
     ) {
         withContext(Dispatchers.IO) {
 
@@ -175,7 +197,6 @@ class DownloadService : Service()
 
             // Cuando termina, renombrar el archivo final
             tempFile.renameTo(outputFile)
-
             Log.d("DEPLOY", "Descarga completa: ${file.path}")
         }
     }
@@ -201,6 +222,28 @@ class DownloadService : Service()
             .setContentText("Downloading...")
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .build()
+    }
+
+    private suspend fun sendStatus(deviceId: String, bundleId: String, status: String, ipServer: String) {
+        println("Entro al status")
+        val json = """
+        {
+            "deviceId": "$deviceId",
+            "bundle": "$bundleId",
+            "status": "$status",
+            "timestamp": ${System.currentTimeMillis()}
+        }
+    """.trimIndent()
+
+        val requestBody = json.toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("$ipServer/report/")
+            .post(requestBody)
+            .build()
+
+        OkHttpClient().newCall(request).execute().use { response ->
+            println("Servidor respondió: ${response.code}")
+        }
     }
 
     override fun onBind(intent: Intent?) = null
