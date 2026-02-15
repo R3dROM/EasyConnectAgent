@@ -230,7 +230,8 @@ class DownloadService : Service()
         {
             "deviceId": "$deviceId",
             "bundle": "$bundleId",
-            "status": "$status",
+            "downloadStatus": "$status",
+            "installStatus": "$status",
             "timestamp": ${System.currentTimeMillis()}
         }
     """.trimIndent()
