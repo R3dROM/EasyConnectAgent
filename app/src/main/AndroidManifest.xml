@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application
         android:allowBackup="false"
@@ -29,6 +30,10 @@
             android:name=".DownloadService"
             android:exported="true"
             android:foregroundServiceType="dataSync"/>
+        <service
+            android:name=".InstallService"
+            android:exported="true"
+            android:foregroundServiceType="dataSync"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -39,6 +44,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".InstallResultActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
     </application>
 
 </manifest>
