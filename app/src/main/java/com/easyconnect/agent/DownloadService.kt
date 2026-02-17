@@ -153,14 +153,14 @@ class DownloadService : Service()
             }
         }
         Log.d("DEPLOY", "Descarga completa")
-        val installIntent = Intent(applicationContext, InstallService::class.java)
-        installIntent.putExtra("apkPath", apkPath)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            applicationContext.startForegroundService(installIntent)
-        } else {
-            applicationContext.startService(installIntent)
-        }
-        sendStatus(getIpAddress(), bundle, "SUCCESS", baseUrl)
+//        val installIntent = Intent(applicationContext, InstallService::class.java)
+//        installIntent.putExtra("apkPath", apkPath)
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//            applicationContext.startForegroundService(installIntent)
+//        } else {
+//            applicationContext.startService(installIntent)
+//        }
+        sendStatus(getIpAddress(), bundle, "SUCCESS", baseUrl, apkPath)
     }
     private fun getIpAddress(): String?
     {
@@ -258,13 +258,14 @@ class DownloadService : Service()
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .build()
     }
-    private suspend fun sendStatus(deviceId: String?, bundleId: String, status: String, ipServer: String) {
+    private suspend fun sendStatus(deviceId: String?, bundleId: String, status: String, ipServer: String, apkPath: String) {
         val json = """
         {
             "deviceId": "$deviceId",
             "bundle": "$bundleId",
             "downloadStatus": "$status",
             "installStatus": "$status",
+            "apkPath": "$apkPath",
             "timestamp": ${System.currentTimeMillis()}
         }
     """.trimIndent()

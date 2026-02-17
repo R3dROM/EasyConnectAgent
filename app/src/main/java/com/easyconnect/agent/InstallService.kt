@@ -40,9 +40,9 @@ class InstallService : Service()
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL
         )
-        params.setRequireUserAction(
-            PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED
-        )
+//        params.setRequireUserAction(
+//            PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED
+//        )
         val sessionID = packageInstall.createSession(params)
         val session = packageInstall.openSession(sessionID)
 
