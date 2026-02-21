@@ -5,12 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.net.InetAddresses
-import android.net.IpPrefix
-import android.net.StaticIpConfiguration
 import android.os.Build
-import android.os.Bundle
-import android.provider.Settings
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,23 +19,23 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.net.Inet4Address
-import java.net.InetAddress
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.jvm.java
-import kotlin.math.max
-
-//data class Manifest(
-//    val version: String,
-//    val files: List<ManifestFile>
-//)
 
 data class ManifestFile(
     val path: String,
     val size: Long,
     val sha256: String
 )
+data class DeviceReport(
+    val deviceIp: String?,
+    val apkPath: String,
+    val apkSize: Long,
+    val apkName: String
+)
+
 class DownloadService : Service()
 {
     val client = OkHttpClient.Builder()
@@ -117,10 +112,8 @@ class DownloadService : Service()
         return filesList
     }
     private suspend fun downloadExperience(baseUrl: String, outputDir: File, bundle: String) {
-
+        val deviceReport = null
         val manifestUrl = "$baseUrl/manifest.json"
-        var apkPath = ""
-        println(baseUrl)
         val manifestRaw = downloadManifestRaw(manifestUrl)
             ?: return
 
@@ -144,23 +137,19 @@ class DownloadService : Service()
             }
             Log.d("DEPLOY", "Descargando ${file.path}")
 
-            downloadFile(baseUrl, file, outputDir,file.sha256)
+            downloadFile(baseUrl, file, outputDir)
             if (file.path.endsWith(".apk")) {
-                val finalFile = File(outputDir, file.path)
-                apkPath = finalFile.absolutePath
-                Log.d("DEPLOY", "apkPath $apkPath")
-                println("apkPath $apkPath")
+                val deviceReport = DeviceReport(
+                    getIpAddress(),
+                    finalFile.absolutePath,
+                    file.size,
+                    file.path
+                )
+                Log.d("DEPLOY", "apkPath ${deviceReport.apkPath}")
             }
         }
         Log.d("DEPLOY", "Descarga completa")
-//        val installIntent = Intent(applicationContext, InstallService::class.java)
-//        installIntent.putExtra("apkPath", apkPath)
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-//            applicationContext.startForegroundService(installIntent)
-//        } else {
-//            applicationContext.startService(installIntent)
-//        }
-        sendStatus(getIpAddress(), bundle, "SUCCESS", baseUrl, apkPath)
+        sendStatus(bundle, "SUCCESS", baseUrl, deviceReport)
     }
     private fun getIpAddress(): String?
     {
@@ -174,8 +163,7 @@ class DownloadService : Service()
     private suspend fun downloadFile(
         baseUrl: String,
         file: ManifestFile,
-        outputDir: File,
-        hash: String
+        outputDir: File
     ) {
         withContext(Dispatchers.IO) {
             var maxRetries = 3
@@ -258,14 +246,18 @@ class DownloadService : Service()
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .build()
     }
-    private suspend fun sendStatus(deviceId: String?, bundleId: String, status: String, ipServer: String, apkPath: String) {
+    private suspend fun sendStatus(bundleId: String, status: String, ipServer: String, deviceReport: DeviceReport?) {
+        if (deviceReport == null)
+            return
         val json = """
         {
-            "deviceId": "$deviceId",
+            "deviceId": "${deviceReport.deviceIp}",
             "bundle": "$bundleId",
             "downloadStatus": "$status",
-            "installStatus": "$status",
-            "apkPath": "$apkPath",
+            "installStatus": "NOT YET",
+            "apkPath": "${deviceReport.apkPath}",
+            "apkName": "${deviceReport.apkName}",
+            "apkSize": ${deviceReport.apkSize},
             "timestamp": ${System.currentTimeMillis()}
         }
     """.trimIndent()
