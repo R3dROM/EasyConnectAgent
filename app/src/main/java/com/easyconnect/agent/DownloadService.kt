@@ -1,12 +1,10 @@
 package com.easyconnect.agent
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,7 +20,6 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
-import kotlin.jvm.java
 
 data class ManifestFile(
     val path: String,
@@ -30,10 +27,11 @@ data class ManifestFile(
     val sha256: String
 )
 data class DeviceReport(
-    val deviceIp: String?,
-    val apkPath: String,
-    val apkSize: Long,
-    val apkName: String
+    val deviceIp: String? = "null",
+    val apkPath: String = "null",
+    val apkSize: Long = 0L,
+    val apkName: String = "null",
+    var status: Boolean = false
 )
 
 class DownloadService : Service()
@@ -46,12 +44,12 @@ class DownloadService : Service()
         .build()
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
-        createNotification()
-        startForeground(1, createNotification())
+        val notification = createNotification()
+        startForeground(1, notification)
 
         val baseUrl = intent?.getStringExtra("url") ?: return START_NOT_STICKY
         val bundle = intent.getStringExtra("bundle") ?: return START_NOT_STICKY
-        val outputDir = File(getExternalFilesDir(null), "$bundle/files/")
+        val outputDir = File(getExternalFilesDir(null), bundle)
 
         CoroutineScope(Dispatchers.IO).launch {
             downloadExperience(baseUrl, outputDir, bundle)
@@ -64,7 +62,7 @@ class DownloadService : Service()
     fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { fis ->
-            val buffer = ByteArray(8192)
+            val buffer = ByteArray(64 * 1024)
             var bytesRead: Int
             while (fis.read(buffer).also { bytesRead = it } != -1) {
                 digest.update(buffer, 0, bytesRead)
@@ -112,7 +110,7 @@ class DownloadService : Service()
         return filesList
     }
     private suspend fun downloadExperience(baseUrl: String, outputDir: File, bundle: String) {
-        val deviceReport = null
+        var deviceReport = DeviceReport()
         val manifestUrl = "$baseUrl/manifest.json"
         val manifestRaw = downloadManifestRaw(manifestUrl)
             ?: return
@@ -126,34 +124,42 @@ class DownloadService : Service()
                 val hash = sha256(finalFile)
                 if (hash == file.sha256)
                 {
-                    Log.d("DEPLOY", "Archivo ya completo, saltando: ${file.path}")
+                    Log.e("DEPLOY", "Archivo ya completo, saltando: ${file.path}")
+                    if (file.path.endsWith(".apk")) {
+                        deviceReport = DeviceReport(
+                            getIpAddress(),
+                            finalFile.absolutePath,
+                            file.size,
+                            file.path
+                        )
+                        Log.e("DEPLOY", "apkPath ${deviceReport.apkPath}")
+                    }
                     continue // No descargar
                 }
                 else
                 {
                     finalFile.delete()
-                    Log.d("DEPLOY","${file.path} está corrupto o ha cambiado, volviendo a descargar")
+                    Log.e("DEPLOY","${file.path} está corrupto o ha cambiado, volviendo a descargar")
                 }
             }
-            Log.d("DEPLOY", "Descargando ${file.path}")
-
-            downloadFile(baseUrl, file, outputDir)
+            Log.e("DEPLOY", "Descargando ${file.path}")
             if (file.path.endsWith(".apk")) {
-                val deviceReport = DeviceReport(
+                deviceReport = DeviceReport(
                     getIpAddress(),
                     finalFile.absolutePath,
                     file.size,
                     file.path
                 )
-                Log.d("DEPLOY", "apkPath ${deviceReport.apkPath}")
+                Log.e("DEPLOY", "apkPath ${deviceReport.apkPath}")
             }
+            downloadFile(baseUrl, file, outputDir, deviceReport)
         }
-        Log.d("DEPLOY", "Descarga completa")
-        sendStatus(bundle, "SUCCESS", baseUrl, deviceReport)
+        Log.e("DEPLOY", "Descarga completa")
+        sendStatus(bundle, deviceReport.status, baseUrl, deviceReport)
     }
     private fun getIpAddress(): String?
     {
-        NetworkInterface.getNetworkInterfaces()?.toList()?.map { networkInterface ->
+        NetworkInterface.getNetworkInterfaces()?.toList()?.forEach { networkInterface ->
             networkInterface.inetAddresses?.toList()?.find {
                 !it.isLoopbackAddress && it is Inet4Address
             }?.let { return it.hostAddress }
@@ -163,7 +169,8 @@ class DownloadService : Service()
     private suspend fun downloadFile(
         baseUrl: String,
         file: ManifestFile,
-        outputDir: File
+        outputDir: File,
+        deviceReport: DeviceReport
     ) {
         withContext(Dispatchers.IO) {
             var maxRetries = 3
@@ -208,7 +215,7 @@ class DownloadService : Service()
                                 downloaded += bytesRead
 
                                 val percent = (downloaded * 100 / total).toInt()
-                                Log.d("DEPLOY", "Progreso ${file.path}: $percent%")
+                                Log.e("DEPLOY", "Progreso ${file.path}: $percent%")
                             }
                             output.fd.sync()
                         }
@@ -217,43 +224,42 @@ class DownloadService : Service()
                 if (tempFile.length() == file.size && sha256(tempFile) == file.sha256)
                 {
                     tempFile.renameTo(outputFile)
-                    Log.d("DEPLOY", "Descarga de ${file.path} completada")
+                    Log.e("DEPLOY", "Descarga de ${file.path} completada")
+                    deviceReport.status = true
                     return@withContext
                 }
                 tempFile.delete()
-                Log.d("DEPLOY", "Intento fallido para ${file.path}")
+                Log.e("DEPLOY", "Intento fallido para ${file.path}")
             }
-            Log.d("DEPLOY", "Máximos intentos alcanzados para ${file.path}")
+            Log.e("DEPLOY", "Máximos intentos alcanzados para ${file.path}")
+            deviceReport.status = false
         }
     }
     private fun createNotification(): Notification {
         val channelId = "deploy_channel"
 
-        val channel = NotificationChannel(
-            channelId,
-            "Deploy",
-            NotificationManager.IMPORTANCE_LOW
-        )
-        val nm = getSystemService(NotificationManager::class.java)
+//        val channel = NotificationChannel(
+//            channelId,
+//            "DEPLOY",
+//            NotificationManager.IMPORTANCE_HIGH
+//        )
+//        val nm = getSystemService(NotificationManager::class.java)
+//        nm.createNotificationChannel(channel)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Deploy", NotificationManager.IMPORTANCE_LOW)
-            nm?.createNotificationChannel(channel)
-        }
-        return Notification.Builder(this, channelId)
+        return NotificationCompat.Builder(this, channelId)
             .setContentTitle("EasyDeploy")
             .setContentText("Downloading...")
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .build()
     }
-    private suspend fun sendStatus(bundleId: String, status: String, ipServer: String, deviceReport: DeviceReport?) {
+    private fun sendStatus(bundleId: String, status: Boolean, ipServer: String, deviceReport: DeviceReport?) {
         if (deviceReport == null)
             return
         val json = """
         {
             "deviceId": "${deviceReport.deviceIp}",
             "bundle": "$bundleId",
-            "downloadStatus": "$status",
+            "downloadStatus": $status,
             "installStatus": "NOT YET",
             "apkPath": "${deviceReport.apkPath}",
             "apkName": "${deviceReport.apkName}",
