@@ -6,8 +6,8 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
-    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <application
         android:allowBackup="false"
@@ -17,21 +17,12 @@
         android:label="EasyDeployAgent"
         android:theme="@style/Theme.EasyDeployAgent"
         android:usesCleartextTraffic="true">
-
-        <receiver
-            android:name=".DeployReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.easyconnect.DEPLOY"/>
-            </intent-filter>
-        </receiver>
-
         <service
             android:name=".DownloadService"
             android:exported="true"
             android:foregroundServiceType="dataSync"/>
         <service
-            android:name=".InstallService"
+            android:name=".WebSocketService"
             android:exported="true"
             android:foregroundServiceType="dataSync"/>
         <activity
@@ -45,5 +36,4 @@
             </intent-filter>
         </activity>
     </application>
-
 </manifest>
