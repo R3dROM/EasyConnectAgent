@@ -1,10 +1,11 @@
 package com.easyconnect.agent
 
+import android.app.Service
 import android.content.Context
 import android.os.BatteryManager
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
-import android.os.MessageQueue
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -16,25 +17,32 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class WebSocketClass(
     private val client: OkHttpClient,
     private val url : String,
-    context: Context)
+    context: Context,
+    service: Service)
 {
+    val handlerThread = HandlerThread("Download Messages information")
+    private lateinit var customLooper : Looper
+    private lateinit var customHandler : Handler
     private var messageQueue = ConcurrentLinkedQueue<String>()
     private val ctx = context
+    private val srv = service
     private val handler = Handler(Looper.getMainLooper())
     private var isConnected = false
     private var webSocket: WebSocket? = null
-
     fun connect() {
         val request = Request.Builder()
             .url(url)
             .build()
         webSocket = client.newWebSocket(request, socketListener)
+        handlerThread.start()
+        customLooper = handlerThread.looper
+        customHandler = Handler(customLooper)
     }
-    fun sendMessage(message: String) {
-        if (!isConnected)
-            messageQueue.add(message)
-        else
-            webSocket?.send(message)
+    fun disconnect() {
+        isConnected = false
+        handler.removeCallbacksAndMessages(null)
+        webSocket?.close(1000, "Cierre normal")
+        srv.stopSelf()
     }
     fun flushQueue()
     {
@@ -46,19 +54,33 @@ class WebSocketClass(
             }
         }
     }
+    fun sendMessage(message: String) {
+        if (!isConnected)
+            messageQueue.add(message)
+        else
+            webSocket?.send(message)
+    }
+    private fun startConnectionMessage()
+    {
+        val json = """
+                    {
+                      "type":"register",
+                      "payload":{
+                        "deviceId":"pico-01",
+                        "appVersion":"1.0.0"
+                      }
+                    }
+                """.trimIndent()
+        sendMessage(json)
+    }
     fun startHeartbeat() {
         handler.postDelayed(object : Runnable {
             override fun run() {
                 if (!isConnected) return
-                webSocket?.send("""{"type":"heartbeat"}""")
+                sendMessage("""{"type":"heartbeat"}""")
                 handler.postDelayed(this, 15000)
             }
         }, 15000)
-    }
-    fun disconnect() {
-        isConnected = false
-        handler.removeCallbacksAndMessages(null)
-        webSocket?.close(1000, "Cierre normal")
     }
     private fun startBattery() {
         handler.postDelayed(object : Runnable {
@@ -79,7 +101,7 @@ class WebSocketClass(
                     }
                 """.trimIndent()
 
-                webSocket?.send(json)
+                sendMessage(json)
 
                 handler.postDelayed(this, 5000)
             }
@@ -89,15 +111,7 @@ class WebSocketClass(
         override fun onOpen(webSocket: WebSocket, response: Response) {
             isConnected = true
             println("✅ Conectado al servidor")
-            sendMessage("""
-                    {
-                      "type":"register",
-                      "payload":{
-                        "deviceId":"pico-01",
-                        "appVersion":"1.0.0"
-                      }
-                    }
-                """.trimIndent())
+            startConnectionMessage()
             startHeartbeat()
             startBattery()
             flushQueue()
@@ -109,11 +123,47 @@ class WebSocketClass(
             println("📦 Mensaje binario recibido")
         }
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            webSocket.close(1000, null)
+            disconnect()
             println("🔌 Cerrando conexión")
         }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            disconnect()
             println("❌ Error: ${t.message}")
         }
+    }
+    fun downloadInfo( deviceReport: DeviceReport)
+    {
+        customHandler.postDelayed(object : Runnable {
+            override fun run() {
+                if (!isConnected) return
+                val json = """
+                    {
+                      "type":"downloadInformation",
+                      "payload":{
+                        "deviceId": "${deviceReport.deviceIp}",
+                        "status": ${deviceReport.status},
+                        "bundle": "${deviceReport.bundle}",
+                        "apkPath": "${deviceReport.apkPath}",
+                        "apkName": "${deviceReport.apkName}",
+                        "apkSize": ${deviceReport.apkSize},
+                        "timestamp": ${deviceReport.timestamp},
+                        "percent": ${deviceReport.percent},
+                        "currentFile": "${deviceReport.currentFile}"
+                      }
+                    }
+                """.trimIndent()
+                sendMessage(json)
+                if (deviceReport.status)
+                {
+                    downloadComplete()
+                    return
+                }
+                customHandler.postDelayed(this, 1000)
+            }
+        }, 1000)
+    }
+    fun downloadComplete()
+    {
+        customHandler.looper.quit()
     }
 }

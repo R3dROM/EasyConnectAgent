@@ -1,14 +1,11 @@
 package com.easyconnect.agent
 
 import android.content.Context
-import android.content.ContextWrapper
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -26,7 +23,11 @@ data class DeviceReport(
     val apkPath: String = "null",
     val apkSize: Long = 0L,
     val apkName: String = "null",
-    var status: Boolean = false
+    var status: Boolean = false,
+    var bundle: String = "null",
+    var timestamp: Long = 0L,
+    var percent: Int = 0,
+    var currentFile: String = "null"
 )
 class DownloadClass (
     private val client: OkHttpClient,
@@ -87,7 +88,7 @@ class DownloadClass (
     }
     suspend fun downloadExperience(baseUrl: String) {
 
-        var deviceReport : DeviceReport? = null
+        lateinit var deviceReport : DeviceReport
         val manifestUrl = "$baseUrl/manifest.json"
         val manifestRaw = downloadManifestRaw(manifestUrl)
             ?: return
@@ -96,17 +97,20 @@ class DownloadClass (
         val files = manifest.first
         val bundle = manifest.second
         val outputDir = File(context.getExternalFilesDir(null), bundle)
-        val apk = files.firstOrNull{it.path.endsWith(".apk")}
+        val apk = files.firstOrNull{it.path.endsWith(".apk")} // -> Only one file can be the apk
         if (apk != null)
         {
             val apkPath = File(outputDir, apk.path)
             deviceReport = DeviceReport(
-                getIpAddress(),
-                apkPath.absolutePath,
-                apk.size,
-                apk.path
+                deviceIp = getIpAddress(),
+                apkPath = apkPath.absolutePath,
+                apkSize = apk.size,
+                apkName = apk.path,
+                status = false,
+                bundle = bundle,
             )
         }
+        webSocketService?.sendDownloadStatus(deviceReport)
         for (file in files) {
             val finalFile = File(outputDir, file.path)
             if (finalFile.exists() && finalFile.length() == file.size)
@@ -124,17 +128,19 @@ class DownloadClass (
                 }
             }
             Log.e("DEPLOY", "Descargando ${file.path}")
+            deviceReport.currentFile = "(${files.indexOf(file) + 1}/${files.size}) - ${finalFile.name}"
             downloadFile(baseUrl, file, outputDir, deviceReport)
         }
         Log.e("DEPLOY", "Descarga completa")
-        sendStatus(bundle, baseUrl, deviceReport)
+        deviceReport.status = true
+        //sendStatus(bundle, baseUrl, deviceReport)
     }
     private fun getIpAddress(): String?
     {
         NetworkInterface.getNetworkInterfaces()?.toList()?.forEach { networkInterface ->
-            networkInterface.inetAddresses?.toList()?.find {
-                !it.isLoopbackAddress && it is Inet4Address
-            }?.let { return it.hostAddress }
+            networkInterface.interfaceAddresses?.find {
+                it.address is Inet4Address && !it.address.isLoopbackAddress && it.address.isSiteLocalAddress && networkInterface.name == "wlan0"
+            }?.let { return it.address.hostAddress }
         }
         return ""
     }
@@ -142,7 +148,7 @@ class DownloadClass (
         baseUrl: String,
         file: ManifestFile,
         outputDir: File,
-        deviceReport: DeviceReport?
+        deviceReport: DeviceReport
     ) {
         withContext(Dispatchers.IO) {
             var maxRetries = 3
@@ -188,7 +194,7 @@ class DownloadClass (
 
                                 val percent = (downloaded * 100 / total).toInt()
                                 Log.e("DEPLOY", "Progreso ${file.path}: $percent%")
-                                webSocketService?.sendMessage("${file.path}: $percent%")
+                                deviceReport.percent = percent
                             }
                             output.fd.sync()
                         }
@@ -198,40 +204,38 @@ class DownloadClass (
                 {
                     tempFile.renameTo(outputFile)
                     Log.e("DEPLOY", "Descarga de ${file.path} completada")
-                    deviceReport?.status = true
                     return@withContext
                 }
                 tempFile.delete()
                 Log.e("DEPLOY", "Intento fallido para ${file.path}")
             }
             Log.e("DEPLOY", "Máximos intentos alcanzados para ${file.path}")
-            deviceReport?.status = false
         }
     }
-    private fun sendStatus(bundleId: String, ipServer: String, deviceReport: DeviceReport?) {
-        if (deviceReport == null)
-            return
-        val json = """
-        {
-            "deviceId": "${deviceReport.deviceIp}",
-            "bundle": "$bundleId",
-            "downloadStatus": ${deviceReport.status},
-            "installStatus": ${!deviceReport.status},
-            "apkPath": "${deviceReport.apkPath}",
-            "apkName": "${deviceReport.apkName}",
-            "apkSize": ${deviceReport.apkSize},
-            "timestamp": ${System.currentTimeMillis()}
-        }
-    """.trimIndent()
-
-        val requestBody = json.toRequestBody("application/json".toMediaType())
-        val request = Request.Builder()
-            .url("$ipServer/report/")
-            .post(requestBody)
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            println("Servidor respondió: ${response.code}")
-        }
-    }
+//    private fun sendStatus(bundleId: String, ipServer: String, deviceReport: DeviceReport?) {
+//        if (deviceReport == null)
+//            return
+//        val json = """
+//        {
+//            "deviceId": "${deviceReport.deviceIp}",
+//            "bundle": "$bundleId",
+//            "downloadStatus": ${deviceReport.status},
+//            "installStatus": ${!deviceReport.status},
+//            "apkPath": "${deviceReport.apkPath}",
+//            "apkName": "${deviceReport.apkName}",
+//            "apkSize": ${deviceReport.apkSize},
+//            "timestamp": ${System.currentTimeMillis()}
+//        }
+//    """.trimIndent()
+//
+//        val requestBody = json.toRequestBody("application/json".toMediaType())
+//        val request = Request.Builder()
+//            .url("$ipServer/report/")
+//            .post(requestBody)
+//            .build()
+//
+//        client.newCall(request).execute().use { response ->
+//            println("Servidor respondió: ${response.code}")
+//        }
+//    }
 }

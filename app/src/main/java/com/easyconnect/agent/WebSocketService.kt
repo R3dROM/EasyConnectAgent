@@ -3,20 +3,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.content.Context
 import android.content.Intent
-import android.os.BatteryManager
 import android.os.Binder
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import androidx.core.app.NotificationCompat
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString
 import java.util.concurrent.TimeUnit
 
 class WebSocketService : Service()
@@ -37,9 +28,14 @@ class WebSocketService : Service()
         startForeground(1, notification)
         val websocketUrl = intent?.getStringExtra("webSocketUrl")
             ?: return START_STICKY
+        val stopWebSocket = intent.getStringExtra("stop")
         if (!::webSocketClass.isInitialized) {
-            webSocketClass = WebSocketClass(client, websocketUrl, this)
+            webSocketClass = WebSocketClass(client, websocketUrl, this@WebSocketService, this@WebSocketService)
             webSocketClass.connect()
+        }
+        if (::webSocketClass.isInitialized && stopWebSocket != null)
+        {
+            webSocketClass.disconnect()
         }
         return START_STICKY
     }
@@ -48,10 +44,10 @@ class WebSocketService : Service()
             webSocketClass.disconnect()
         super.onDestroy()
     }
-    fun sendMessage(message: String)
+    fun sendDownloadStatus(deviceReport: DeviceReport)
     {
         if (::webSocketClass.isInitialized)
-            webSocketClass.sendMessage(message)
+            webSocketClass.downloadInfo(deviceReport)
     }
     private fun createNotification(): Notification {
         val channelId = "deploy_channel"

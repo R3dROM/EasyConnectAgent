@@ -9,26 +9,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
-import java.io.File
-import java.io.FileOutputStream
-import java.net.Inet4Address
-import java.net.NetworkInterface
-import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 class DownloadService : Service()
 {
+    private lateinit var downloadClass : DownloadClass
     private var webSocketService: WebSocketService? = null
     private var bound = false
     private var pending: String? = null
@@ -38,7 +28,6 @@ class DownloadService : Service()
         .writeTimeout(30, TimeUnit.MINUTES)       // si se subiera algo
         .retryOnConnectionFailure(true)           // reintentos automáticos
         .build()
-    private lateinit var downloadClass : DownloadClass
     private val connection = object : ServiceConnection {
 
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -47,14 +36,13 @@ class DownloadService : Service()
             bound = true
 
             pending?.let {
-                StartDownload(it)
+                startDownload(it)
                 pending = null
             }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            bound = false
-            webSocketService = null
+            cleanEverything()
         }
     }
     override fun onCreate() {
@@ -68,7 +56,9 @@ class DownloadService : Service()
 
     override fun onDestroy() {
         if (bound)
-            unbindService(connection)
+        {
+            cleanEverything()
+        }
         super.onDestroy()
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -78,13 +68,13 @@ class DownloadService : Service()
         val baseUrl = intent?.getStringExtra("url")
             ?: return START_NOT_STICKY
         if (bound && webSocketService != null)
-            StartDownload(baseUrl)
+            startDownload(baseUrl)
         else
             pending = baseUrl
 
         return START_NOT_STICKY
     }
-    private fun StartDownload(baseUrl: String)
+    private fun startDownload(baseUrl: String)
     {
         CoroutineScope(Dispatchers.IO).launch {
             downloadClass = DownloadClass(client, webSocketService, this@DownloadService)
@@ -107,6 +97,14 @@ class DownloadService : Service()
             .setContentText("Downloading...")
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .build()
+    }
+    private fun cleanEverything()
+    {
+        unbindService(connection)
+        bound = false
+        webSocketService = null
+        pending = null
+        stopSelf()
     }
     override fun onBind(intent: Intent?) = null
 }
