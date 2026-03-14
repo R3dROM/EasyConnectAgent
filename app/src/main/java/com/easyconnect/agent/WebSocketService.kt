@@ -23,6 +23,10 @@ class WebSocketService : Service()
         .writeTimeout(30, TimeUnit.MINUTES)       // si se subiera algo
         .retryOnConnectionFailure(true)           // reintentos automáticos
         .build()
+
+    override fun onCreate() {
+        super.onCreate()
+    }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = createNotification()
         startForeground(1, notification)
@@ -48,6 +52,14 @@ class WebSocketService : Service()
     {
         if (::webSocketClass.isInitialized)
             webSocketClass.downloadInfo(deviceReport)
+    }
+    fun getIpAddress() : String
+    {
+        return webSocketClass.getDeviceIp()
+    }
+    fun getMAC() : String
+    {
+        return  webSocketClass.getDeviceMAC()
     }
     private fun createNotification(): Notification {
         val channelId = "deploy_channel"

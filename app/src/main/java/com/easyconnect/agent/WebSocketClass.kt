@@ -1,17 +1,23 @@
 package com.easyconnect.agent
 
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Context
+import android.net.MacAddress
+import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.provider.Settings
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class WebSocketClass(
@@ -29,7 +35,19 @@ class WebSocketClass(
     private val handler = Handler(Looper.getMainLooper())
     private var isConnected = false
     private var webSocket: WebSocket? = null
+    private var deviceMAC: String = "NO MAC"
+    private var deviceIp: String = "NO IP"
+
+    fun getDeviceIp() : String
+    {
+        return deviceIp
+    }
+    fun getDeviceMAC() : String
+    {
+        return deviceMAC
+    }
     fun connect() {
+        startDeviceInfo()
         val request = Request.Builder()
             .url(url)
             .build()
@@ -60,13 +78,14 @@ class WebSocketClass(
         else
             webSocket?.send(message)
     }
+    @SuppressLint("HardwareIds")
     private fun startConnectionMessage()
     {
         val json = """
                     {
                       "type":"register",
                       "payload":{
-                        "deviceId":"pico-01",
+                        "deviceId":"$deviceIp",
                         "appVersion":"1.0.0"
                       }
                     }
@@ -110,7 +129,10 @@ class WebSocketClass(
     private val socketListener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             isConnected = true
+
             println("✅ Conectado al servidor")
+            println("MAC: $deviceMAC")
+            println("IP: $deviceIp")
             startConnectionMessage()
             startHeartbeat()
             startBattery()
@@ -140,7 +162,7 @@ class WebSocketClass(
                     {
                       "type":"downloadInformation",
                       "payload":{
-                        "deviceId": "${deviceReport.deviceIp}",
+                        "deviceId": "$deviceIp",
                         "status": ${deviceReport.status},
                         "bundle": "${deviceReport.bundle}",
                         "apkPath": "${deviceReport.apkPath}",
@@ -164,6 +186,28 @@ class WebSocketClass(
     }
     fun downloadComplete()
     {
-        customHandler.looper.quit()
+        customHandler.looper.quitSafely()
+        handlerThread.quitSafely()
+    }
+    private fun getIpAddress(): String
+    {
+        NetworkInterface.getNetworkInterfaces().toList().forEach { networkInterface ->
+            if (!networkInterface.isUp || networkInterface.isLoopback) return@forEach
+            networkInterface.inetAddresses.toList().forEach { address ->
+                if (address is Inet4Address && !address.isLoopbackAddress && networkInterface.name == "wlan0")
+                    return address.hostAddress ?: "NO IP"
+            }
+        }
+        return "NO WLAN0"
+    }
+    @SuppressLint("HardwareIds")
+    private fun getMAC(): String
+    {
+        return Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ANDROID_ID)
+    }
+    fun startDeviceInfo()
+    {
+        deviceIp = getIpAddress()
+        //deviceMAC = getMAC()
     }
 }

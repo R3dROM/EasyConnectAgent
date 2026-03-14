@@ -102,7 +102,7 @@ class DownloadClass (
         {
             val apkPath = File(outputDir, apk.path)
             deviceReport = DeviceReport(
-                deviceIp = getIpAddress(),
+                deviceIp = webSocketService?.getIpAddress(),
                 apkPath = apkPath.absolutePath,
                 apkSize = apk.size,
                 apkName = apk.path,
@@ -134,15 +134,6 @@ class DownloadClass (
         Log.e("DEPLOY", "Descarga completa")
         deviceReport.status = true
         //sendStatus(bundle, baseUrl, deviceReport)
-    }
-    private fun getIpAddress(): String?
-    {
-        NetworkInterface.getNetworkInterfaces()?.toList()?.forEach { networkInterface ->
-            networkInterface.interfaceAddresses?.find {
-                it.address is Inet4Address && !it.address.isLoopbackAddress && it.address.isSiteLocalAddress && networkInterface.name == "wlan0"
-            }?.let { return it.address.hostAddress }
-        }
-        return ""
     }
     private suspend fun downloadFile(
         baseUrl: String,
