@@ -1,15 +1,17 @@
 package com.easyconnect.agent
 
 import android.annotation.SuppressLint
-import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
-import android.net.MacAddress
-import android.net.wifi.WifiManager
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.provider.Settings
+import androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+import androidx.core.content.ContextCompat.registerReceiver
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -23,18 +25,17 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class WebSocketClass(
     private val client: OkHttpClient,
     private val url : String,
-    context: Context,
-    service: Service)
+    context: Context)
 {
-    val handlerThread = HandlerThread("Download Messages information")
+    private var handlerThread: HandlerThread ? = null
+    private var webSocket: WebSocket? = null
     private lateinit var customLooper : Looper
     private lateinit var customHandler : Handler
+    lateinit var receiver: BroadcastReceiver
     private var messageQueue = ConcurrentLinkedQueue<String>()
     private val ctx = context
-    private val srv = service
     private val handler = Handler(Looper.getMainLooper())
     private var isConnected = false
-    private var webSocket: WebSocket? = null
     private var deviceMAC: String = "NO MAC"
     private var deviceIp: String = "NO IP"
 
@@ -52,15 +53,29 @@ class WebSocketClass(
             .url(url)
             .build()
         webSocket = client.newWebSocket(request, socketListener)
-        handlerThread.start()
-        customLooper = handlerThread.looper
+        handlerThread = HandlerThread("Download Messages information")
+        handlerThread!!.start()
+        customLooper = handlerThread!!.looper
         customHandler = Handler(customLooper)
+
+        receiver = PackageInstallReceiver()
+        val filter = IntentFilter(Intent.ACTION_POWER_CONNECTED).apply {
+//            addDataScheme("package")
+        }
+        registerReceiver(ctx, receiver, filter, RECEIVER_EXPORTED)
     }
     fun disconnect() {
         isConnected = false
         handler.removeCallbacksAndMessages(null)
+        handlerThread?.quitSafely()
+        handlerThread = null
         webSocket?.close(1000, "Cierre normal")
-        srv.stopSelf()
+        webSocket = null
+        ctx.unregisterReceiver(receiver)
+    }
+    fun isConnected(): Boolean
+    {
+        return isConnected
     }
     fun flushQueue()
     {
@@ -78,7 +93,6 @@ class WebSocketClass(
         else
             webSocket?.send(message)
     }
-    @SuppressLint("HardwareIds")
     private fun startConnectionMessage()
     {
         val json = """
@@ -149,8 +163,11 @@ class WebSocketClass(
             println("🔌 Cerrando conexión")
         }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            disconnect()
+            isConnected = false
             println("❌ Error: ${t.message}")
+            handler.postDelayed({
+                connect()
+            }, 5000)
         }
     }
     fun downloadInfo( deviceReport: DeviceReport)
@@ -187,7 +204,7 @@ class WebSocketClass(
     fun downloadComplete()
     {
         customHandler.looper.quitSafely()
-        handlerThread.quitSafely()
+        handlerThread!!.quitSafely()
     }
     private fun getIpAddress(): String
     {
@@ -208,6 +225,6 @@ class WebSocketClass(
     fun startDeviceInfo()
     {
         deviceIp = getIpAddress()
-        //deviceMAC = getMAC()
+        deviceMAC = getMAC()
     }
 }

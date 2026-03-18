@@ -18,6 +18,7 @@ class WebSocketService : Service()
     }
     private val binder = LocalBinder()
     val client = OkHttpClient.Builder()
+        .pingInterval(15, TimeUnit.SECONDS)
         .connectTimeout(60, TimeUnit.SECONDS)      // conexión inicial
         .readTimeout(30, TimeUnit.MINUTES)        // lectura de bytes grandes
         .writeTimeout(30, TimeUnit.MINUTES)       // si se subiera algo
@@ -33,8 +34,8 @@ class WebSocketService : Service()
         val websocketUrl = intent?.getStringExtra("webSocketUrl")
             ?: return START_STICKY
         val stopWebSocket = intent.getStringExtra("stop")
-        if (!::webSocketClass.isInitialized) {
-            webSocketClass = WebSocketClass(client, websocketUrl, this@WebSocketService, this@WebSocketService)
+        if (!::webSocketClass.isInitialized || !webSocketClass.isConnected()) {
+            webSocketClass = WebSocketClass(client, websocketUrl, this)
             webSocketClass.connect()
         }
         if (::webSocketClass.isInitialized && stopWebSocket != null)
@@ -46,6 +47,7 @@ class WebSocketService : Service()
     override fun onDestroy() {
         if (::webSocketClass.isInitialized)
             webSocketClass.disconnect()
+        stopSelf()
         super.onDestroy()
     }
     fun sendDownloadStatus(deviceReport: DeviceReport)

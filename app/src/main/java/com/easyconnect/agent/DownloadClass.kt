@@ -9,8 +9,6 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.net.Inet4Address
-import java.net.NetworkInterface
 import java.security.MessageDigest
 
 data class ManifestFile(
@@ -101,11 +99,12 @@ class DownloadClass (
         if (apk != null)
         {
             val apkPath = File(outputDir, apk.path)
+            val apkName = apk.path.substringAfter("/")
             deviceReport = DeviceReport(
                 deviceIp = webSocketService?.getIpAddress(),
                 apkPath = apkPath.absolutePath,
                 apkSize = apk.size,
-                apkName = apk.path,
+                apkName = apkName,
                 status = false,
                 bundle = bundle,
             )
@@ -133,7 +132,6 @@ class DownloadClass (
         }
         Log.e("DEPLOY", "Descarga completa")
         deviceReport.status = true
-        //sendStatus(bundle, baseUrl, deviceReport)
     }
     private suspend fun downloadFile(
         baseUrl: String,
@@ -203,30 +201,4 @@ class DownloadClass (
             Log.e("DEPLOY", "Máximos intentos alcanzados para ${file.path}")
         }
     }
-//    private fun sendStatus(bundleId: String, ipServer: String, deviceReport: DeviceReport?) {
-//        if (deviceReport == null)
-//            return
-//        val json = """
-//        {
-//            "deviceId": "${deviceReport.deviceIp}",
-//            "bundle": "$bundleId",
-//            "downloadStatus": ${deviceReport.status},
-//            "installStatus": ${!deviceReport.status},
-//            "apkPath": "${deviceReport.apkPath}",
-//            "apkName": "${deviceReport.apkName}",
-//            "apkSize": ${deviceReport.apkSize},
-//            "timestamp": ${System.currentTimeMillis()}
-//        }
-//    """.trimIndent()
-//
-//        val requestBody = json.toRequestBody("application/json".toMediaType())
-//        val request = Request.Builder()
-//            .url("$ipServer/report/")
-//            .post(requestBody)
-//            .build()
-//
-//        client.newCall(request).execute().use { response ->
-//            println("Servidor respondió: ${response.code}")
-//        }
-//    }
 }
