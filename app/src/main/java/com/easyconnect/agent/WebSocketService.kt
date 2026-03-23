@@ -34,8 +34,10 @@ class WebSocketService : Service()
         val websocketUrl = intent?.getStringExtra("webSocketUrl")
             ?: return START_STICKY
         val stopWebSocket = intent.getStringExtra("stop")
+        val serialNumber = intent.getStringExtra("serialNumber")
+            ?: return  START_STICKY
         if (!::webSocketClass.isInitialized || !webSocketClass.isConnected()) {
-            webSocketClass = WebSocketClass(client, websocketUrl, this)
+            webSocketClass = WebSocketClass(client, websocketUrl, serialNumber,this)
             webSocketClass.connect()
         }
         if (::webSocketClass.isInitialized && stopWebSocket != null)
@@ -50,10 +52,10 @@ class WebSocketService : Service()
         stopSelf()
         super.onDestroy()
     }
-    fun sendDownloadStatus(deviceReport: DeviceReport)
+    fun sendDownloadStatus(downloadReport: DownloadReport)
     {
         if (::webSocketClass.isInitialized)
-            webSocketClass.downloadInfo(deviceReport)
+            webSocketClass.downloadInfo(downloadReport)
     }
     fun getIpAddress() : String
     {

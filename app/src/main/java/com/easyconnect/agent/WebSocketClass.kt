@@ -3,15 +3,11 @@ package com.easyconnect.agent
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.provider.Settings
-import androidx.core.content.ContextCompat.RECEIVER_EXPORTED
-import androidx.core.content.ContextCompat.registerReceiver
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -22,30 +18,37 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.concurrent.ConcurrentLinkedQueue
 
+data object deviceInfo
+{
+    var ip : String = "NO IP"
+    var MAC: String = "NO MAC"
+    var port: String = "5555"
+    var serialNumber: String = "XXX"
+}
 class WebSocketClass(
     private val client: OkHttpClient,
     private val url : String,
+    private val serialNumber: String,
     context: Context)
 {
     private var handlerThread: HandlerThread ? = null
     private var webSocket: WebSocket? = null
     private lateinit var customLooper : Looper
     private lateinit var customHandler : Handler
-    lateinit var receiver: BroadcastReceiver
+//    lateinit var receiver: BroadcastReceiver
     private var messageQueue = ConcurrentLinkedQueue<String>()
     private val ctx = context
     private val handler = Handler(Looper.getMainLooper())
     private var isConnected = false
-    private var deviceMAC: String = "NO MAC"
-    private var deviceIp: String = "NO IP"
+    private var connectionRetries = 3;
 
     fun getDeviceIp() : String
     {
-        return deviceIp
+        return deviceInfo.ip
     }
     fun getDeviceMAC() : String
     {
-        return deviceMAC
+        return deviceInfo.MAC
     }
     fun connect() {
         startDeviceInfo()
@@ -58,20 +61,21 @@ class WebSocketClass(
         customLooper = handlerThread!!.looper
         customHandler = Handler(customLooper)
 
-        receiver = PackageInstallReceiver()
-        val filter = IntentFilter(Intent.ACTION_POWER_CONNECTED).apply {
+//        receiver = PackageInstallReceiver()
+//        val filter = IntentFilter(Intent.ACTION_POWER_CONNECTED).apply {
 //            addDataScheme("package")
-        }
-        registerReceiver(ctx, receiver, filter, RECEIVER_EXPORTED)
+//        }
+//        registerReceiver(ctx, receiver, filter, RECEIVER_EXPORTED)
     }
     fun disconnect() {
+        connectionRetries = 3
         isConnected = false
         handler.removeCallbacksAndMessages(null)
         handlerThread?.quitSafely()
         handlerThread = null
         webSocket?.close(1000, "Cierre normal")
         webSocket = null
-        ctx.unregisterReceiver(receiver)
+//        ctx.unregisterReceiver(receiver)
     }
     fun isConnected(): Boolean
     {
@@ -99,8 +103,8 @@ class WebSocketClass(
                     {
                       "type":"register",
                       "payload":{
-                        "deviceId":"$deviceIp",
-                        "appVersion":"1.0.0"
+                        "ip":"${deviceInfo.ip}",
+                        "serialNumber": "${deviceInfo.serialNumber}"
                       }
                     }
                 """.trimIndent()
@@ -130,7 +134,10 @@ class WebSocketClass(
                 val json = """
                     {
                       "type":"battery",
-                      "payload":{"level":$level}
+                      "payload":{
+                        "ip":"${deviceInfo.ip}",
+                        "batteryLvl":$level
+                      }
                     }
                 """.trimIndent()
 
@@ -138,15 +145,16 @@ class WebSocketClass(
 
                 handler.postDelayed(this, 5000)
             }
-        }, 5000)
+        }, 1000)
     }
     private val socketListener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             isConnected = true
 
             println("✅ Conectado al servidor")
-            println("MAC: $deviceMAC")
-            println("IP: $deviceIp")
+            println("MAC: ${deviceInfo.MAC}")
+            println("IP: ${deviceInfo.ip}")
+            println("SERIAL NUMBER: ${deviceInfo.serialNumber}")
             startConnectionMessage()
             startHeartbeat()
             startBattery()
@@ -165,12 +173,20 @@ class WebSocketClass(
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             isConnected = false
             println("❌ Error: ${t.message}")
-            handler.postDelayed({
-                connect()
-            }, 5000)
+            if (connectionRetries <= 0)
+            {
+                disconnect()
+            }
+            else
+            {
+                connectionRetries--
+                handler.postDelayed({
+                    connect()
+                }, 5000)
+            }
         }
     }
-    fun downloadInfo( deviceReport: DeviceReport)
+    fun downloadInfo( downloadReport: DownloadReport)
     {
         customHandler.postDelayed(object : Runnable {
             override fun run() {
@@ -179,20 +195,20 @@ class WebSocketClass(
                     {
                       "type":"downloadInformation",
                       "payload":{
-                        "deviceId": "$deviceIp",
-                        "status": ${deviceReport.status},
-                        "bundle": "${deviceReport.bundle}",
-                        "apkPath": "${deviceReport.apkPath}",
-                        "apkName": "${deviceReport.apkName}",
-                        "apkSize": ${deviceReport.apkSize},
-                        "timestamp": ${deviceReport.timestamp},
-                        "percent": ${deviceReport.percent},
-                        "currentFile": "${deviceReport.currentFile}"
+                        "ip": "${deviceInfo.ip}",
+                        "serialNumber": "${deviceInfo.serialNumber}",
+                        "status": "${downloadReport.status}",
+                        "bundle": "${downloadReport.bundle}",
+                        "apkName": "${downloadReport.apkName}",
+                        "apkSize": ${downloadReport.apkSize},
+                        "timestamp": ${downloadReport.timestamp},
+                        "percent": ${downloadReport.percent},
+                        "currentFile": "${downloadReport.currentFile}"
                       }
                     }
                 """.trimIndent()
                 sendMessage(json)
-                if (deviceReport.status)
+                if (downloadReport.status.lowercase() == "download complete")
                 {
                     downloadComplete()
                     return
@@ -224,7 +240,8 @@ class WebSocketClass(
     }
     fun startDeviceInfo()
     {
-        deviceIp = getIpAddress()
-        deviceMAC = getMAC()
+        deviceInfo.ip = getIpAddress()
+        deviceInfo.MAC = getMAC()
+        deviceInfo.serialNumber = serialNumber
     }
 }

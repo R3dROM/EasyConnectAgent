@@ -16,12 +16,10 @@ data class ManifestFile(
     val size: Long,
     val sha256: String
 )
-data class DeviceReport(
-    val deviceIp: String? = "null",
-    val apkPath: String = "null",
+data class DownloadReport(
     val apkSize: Long = 0L,
     val apkName: String = "null",
-    var status: Boolean = false,
+    var status: String = "null",
     var bundle: String = "null",
     var timestamp: Long = 0L,
     var percent: Int = 0,
@@ -85,12 +83,12 @@ class DownloadClass (
         return Pair(filesList, bundle)
     }
     suspend fun downloadExperience(baseUrl: String) {
-
-        lateinit var deviceReport : DeviceReport
+        lateinit var downloadReport : DownloadReport
         val manifestUrl = "$baseUrl/manifest.json"
         val manifestRaw = downloadManifestRaw(manifestUrl)
             ?: return
 
+        val start = android.os.SystemClock.elapsedRealtime()
         val manifest = parseManifest(manifestRaw)
         val files = manifest.first
         val bundle = manifest.second
@@ -98,18 +96,15 @@ class DownloadClass (
         val apk = files.firstOrNull{it.path.endsWith(".apk")} // -> Only one file can be the apk
         if (apk != null)
         {
-            val apkPath = File(outputDir, apk.path)
             val apkName = apk.path.substringAfter("/")
-            deviceReport = DeviceReport(
-                deviceIp = webSocketService?.getIpAddress(),
-                apkPath = apkPath.absolutePath,
+            downloadReport = DownloadReport(
                 apkSize = apk.size,
                 apkName = apkName,
-                status = false,
+                status = "Downloading",
                 bundle = bundle,
             )
         }
-        webSocketService?.sendDownloadStatus(deviceReport)
+        webSocketService?.sendDownloadStatus(downloadReport)
         for (file in files) {
             val finalFile = File(outputDir, file.path)
             if (finalFile.exists() && finalFile.length() == file.size)
@@ -127,17 +122,19 @@ class DownloadClass (
                 }
             }
             Log.e("DEPLOY", "Descargando ${file.path}")
-            deviceReport.currentFile = "(${files.indexOf(file) + 1}/${files.size}) - ${finalFile.name}"
-            downloadFile(baseUrl, file, outputDir, deviceReport)
+            downloadReport.currentFile = "(${files.indexOf(file) + 1}/${files.size}) - ${finalFile.name}"
+            downloadFile(baseUrl, file, outputDir, downloadReport)
         }
         Log.e("DEPLOY", "Descarga completa")
-        deviceReport.status = true
+        val end = android.os.SystemClock.elapsedRealtime()
+        downloadReport.status = "Download Complete"
+        downloadReport.timestamp = end - start
     }
     private suspend fun downloadFile(
         baseUrl: String,
         file: ManifestFile,
         outputDir: File,
-        deviceReport: DeviceReport
+        downloadReport: DownloadReport
     ) {
         withContext(Dispatchers.IO) {
             var maxRetries = 3
@@ -183,7 +180,7 @@ class DownloadClass (
 
                                 val percent = (downloaded * 100 / total).toInt()
                                 Log.e("DEPLOY", "Progreso ${file.path}: $percent%")
-                                deviceReport.percent = percent
+                                downloadReport.percent = percent
                             }
                             output.fd.sync()
                         }
