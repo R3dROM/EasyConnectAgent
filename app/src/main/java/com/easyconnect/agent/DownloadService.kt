@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -23,10 +24,15 @@ class DownloadService : Service()
     private var bound = false
     private var pending: String? = null
     val client = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS)      // conexión inicial
+        .connectTimeout(15, TimeUnit.SECONDS)      // conexión inicial
         .readTimeout(30, TimeUnit.MINUTES)        // lectura de bytes grandes
         .writeTimeout(30, TimeUnit.MINUTES)       // si se subiera algo
         .retryOnConnectionFailure(true)           // reintentos automáticos
+        .connectionPool(ConnectionPool(
+            5,
+            30,
+            TimeUnit.SECONDS
+        ))
         .build()
     private val connection = object : ServiceConnection {
 

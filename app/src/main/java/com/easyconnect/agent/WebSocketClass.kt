@@ -35,13 +35,16 @@ class WebSocketClass(
     private var webSocket: WebSocket? = null
     private lateinit var customLooper : Looper
     private lateinit var customHandler : Handler
-//    lateinit var receiver: BroadcastReceiver
     private var messageQueue = ConcurrentLinkedQueue<String>()
     private val ctx = context
     private val handler = Handler(Looper.getMainLooper())
     private var isConnected = false
     private var connectionRetries = 3;
 
+    fun getSerialNumber(): String
+    {
+        return deviceInfo.serialNumber
+    }
     fun getDeviceIp() : String
     {
         return deviceInfo.ip
@@ -60,12 +63,6 @@ class WebSocketClass(
         handlerThread!!.start()
         customLooper = handlerThread!!.looper
         customHandler = Handler(customLooper)
-
-//        receiver = PackageInstallReceiver()
-//        val filter = IntentFilter(Intent.ACTION_POWER_CONNECTED).apply {
-//            addDataScheme("package")
-//        }
-//        registerReceiver(ctx, receiver, filter, RECEIVER_EXPORTED)
     }
     fun disconnect() {
         connectionRetries = 3
@@ -75,7 +72,6 @@ class WebSocketClass(
         handlerThread = null
         webSocket?.close(1000, "Cierre normal")
         webSocket = null
-//        ctx.unregisterReceiver(receiver)
     }
     fun isConnected(): Boolean
     {
@@ -173,17 +169,7 @@ class WebSocketClass(
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             isConnected = false
             println("❌ Error: ${t.message}")
-            if (connectionRetries <= 0)
-            {
-                disconnect()
-            }
-            else
-            {
-                connectionRetries--
-                handler.postDelayed({
-                    connect()
-                }, 5000)
-            }
+            disconnect()
         }
     }
     fun downloadInfo( downloadReport: DownloadReport)

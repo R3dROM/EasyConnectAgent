@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -23,11 +24,12 @@ class WebSocketService : Service()
         .readTimeout(30, TimeUnit.MINUTES)        // lectura de bytes grandes
         .writeTimeout(30, TimeUnit.MINUTES)       // si se subiera algo
         .retryOnConnectionFailure(true)           // reintentos automáticos
+        .connectionPool(ConnectionPool(
+            1,
+            30,
+            TimeUnit.SECONDS
+        ))
         .build()
-
-    override fun onCreate() {
-        super.onCreate()
-    }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = createNotification()
         startForeground(1, notification)
@@ -56,6 +58,10 @@ class WebSocketService : Service()
     {
         if (::webSocketClass.isInitialized)
             webSocketClass.downloadInfo(downloadReport)
+    }
+    fun getSerialNumber(): String
+    {
+        return webSocketClass.getSerialNumber()
     }
     fun getIpAddress() : String
     {

@@ -3,14 +3,21 @@ package com.easyconnect.agent
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
+import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
 import java.security.MessageDigest
+import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
+data class Chunk(val start: Long, val end: Long)
 data class ManifestFile(
     val path: String,
     val size: Long,
@@ -31,6 +38,18 @@ class DownloadClass (
     private val context: Context
 )
 {
+    fun splitChunks(size: Long, parts: Int): List<Chunk> {
+        val chunkSize = size / parts
+        val chunks = mutableListOf<Chunk>()
+
+        var start = 0L
+        for (i in 0 until parts) {
+            val end = if (i == parts - 1) size - 1 else start + chunkSize - 1
+            chunks.add(Chunk(start, end))
+            start = end + 1
+        }
+        return chunks
+    }
     fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { fis ->
@@ -67,6 +86,7 @@ class DownloadClass (
 
         val jsonObject = JSONObject(jsonString)
         val filesArray = jsonObject.getJSONArray("files")
+        val netConfigsArray = jsonObject.getJSONArray("netConfigs")
         val bundle = jsonObject.getString("bundle")
 
         for (i in 0 until filesArray.length()) {
@@ -79,6 +99,22 @@ class DownloadClass (
             filesList.add(
                 ManifestFile(path, size, sha256)
             )
+        }
+        for (i in 0 until netConfigsArray.length())
+        {
+            val item = netConfigsArray.getJSONObject(i)
+
+            val path = item.getString("path")
+            val sha256 = item.getString("sha256")
+            val size = item.getLong("size")
+            val serialNumber = item.getString("serialNumber")
+            if (serialNumber == webSocketService?.getSerialNumber())
+            {
+                filesList.add(
+                    ManifestFile(path, size, sha256)
+                )
+                return Pair(filesList, bundle)
+            }
         }
         return Pair(filesList, bundle)
     }
@@ -123,79 +159,128 @@ class DownloadClass (
             }
             Log.e("DEPLOY", "Descargando ${file.path}")
             downloadReport.currentFile = "(${files.indexOf(file) + 1}/${files.size}) - ${finalFile.name}"
-            downloadFile(baseUrl, file, outputDir, downloadReport)
+            downloadFile(baseUrl, file, outputDir, file.size, downloadReport)
         }
         Log.e("DEPLOY", "Descarga completa")
         val end = android.os.SystemClock.elapsedRealtime()
         downloadReport.status = "Download Complete"
         downloadReport.timestamp = end - start
     }
+    @OptIn(ExperimentalAtomicApi::class)
+    suspend fun downloadChunk(
+        url: String,
+        chunk: Chunk,
+        channel: FileChannel,
+        file: ManifestFile,
+        downloadedBytes: AtomicLong,
+        totalSize: Long,
+        lastUpdate: AtomicLong,
+        lock: Any,
+        onProgress: (Int) -> Unit
+    ) = withContext(Dispatchers.IO) {
+
+        var retries = 3
+        var success = false
+        var position = chunk.start
+
+        while (!success && retries > 0)
+        {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("Range", "bytes=${chunk.start}-${chunk.end}")
+                    .build()
+                client.newCall(request).execute().use { response ->
+
+                    if (!response.isSuccessful) {
+                        Log.e("DEPLOY", "Error descargando ${file.path}: ${response.code}")
+                    }
+                    if (response.code != 206) {
+                        throw Exception("Server no soporta partial content")
+                    }
+
+                    response.body.byteStream().use { input ->
+                        val buffer = ByteArray(1024 * 256)
+
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read == -1)
+                            {
+                                success = true
+                                break
+                            }
+
+                            val byteBuffer = ByteBuffer.wrap(buffer, 0, read)
+                            synchronized(lock)
+                            {
+                                channel.write(byteBuffer, position)
+                            }
+
+                            position += read
+
+                            val totalDownloaded = downloadedBytes.addAndFetch(read.toLong())
+                            val percent = ((totalDownloaded * 100) / totalSize).toInt()
+
+                            val now = System.currentTimeMillis()
+                            val last = lastUpdate.load()
+                            if (now - last > 200 && lastUpdate.compareAndSet(last, now)) {
+                                onProgress(percent)
+                            }
+                        }
+                    }
+                }
+            }
+            catch (e: Exception) {
+                retries--
+                if (retries == 0) throw e
+            }
+        }
+    }
+    @OptIn(ExperimentalAtomicApi::class)
     private suspend fun downloadFile(
         baseUrl: String,
         file: ManifestFile,
         outputDir: File,
+        size: Long,
         downloadReport: DownloadReport
     ) {
         withContext(Dispatchers.IO) {
-            var maxRetries = 3
-            val outputFile = File(outputDir, file.path)
+            val parts = 6
+            val chunks = splitChunks(size, parts)
+            val downloadedBytes = AtomicLong(0)
+            val lastUpdate = AtomicLong(0)
+            val lock = Any()
+            val outputFile = if (file.path == "CONFIGS/${webSocketService?.getSerialNumber()}.json") {
+                File(outputDir, "CONFIGS/NetworkingConfiguration.json")
+            } else {
+                File(outputDir, file.path)
+            }
             outputFile.parentFile?.mkdirs()
 
-            while (maxRetries > 0)
-            {
-                maxRetries--
-                // Archivo temporal para resumir descargas interrumpidas
-                val tempFile = File(outputFile.parentFile, "${outputFile.name}.part")
-                var downloaded: Long = if (tempFile.exists()) tempFile.length() else 0L
+            RandomAccessFile(outputFile, "rw").use { raf ->
+                raf.setLength(size)
+                val channel = raf.channel
 
-                val total = file.size
-
-                val request = Request.Builder()
-                    .url("$baseUrl/${file.path}")
-                    .apply {
-                        if (downloaded > 0) {
-                            addHeader("Range", "bytes=$downloaded-")
-                        }
-                    }
-                    .build()
-
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        Log.e("DEPLOY", "Error descargando ${file.path}: ${response.code}")
-                        continue
-                    }
-                    if (downloaded > 0 && response.code != 206)
-                    {
-                        tempFile.delete()
-                        downloaded = 0
-                    }
-                    response.body.byteStream().use { input ->
-                        FileOutputStream(tempFile, true).use { output ->
-                            val buffer = ByteArray(1024 * 1024) // 1MB buffer
-                            var bytesRead: Int
-
-                            while (input.read(buffer).also { bytesRead = it } != -1) {
-                                output.write(buffer, 0, bytesRead)
-                                downloaded += bytesRead
-
-                                val percent = (downloaded * 100 / total).toInt()
-                                Log.e("DEPLOY", "Progreso ${file.path}: $percent%")
-                                downloadReport.percent = percent
-                            }
-                            output.fd.sync()
+                val jobs = chunks.map { chunk ->
+                    async(Dispatchers.IO) {
+                        downloadChunk(
+                            "${baseUrl}/${file.path}",
+                            chunk,
+                            channel,
+                            file,
+                            downloadedBytes,
+                            size,
+                            lastUpdate,
+                            lock
+                        ) { percent ->
+                            downloadReport.percent = percent
                         }
                     }
                 }
-                if (tempFile.length() == file.size && sha256(tempFile) == file.sha256)
-                {
-                    tempFile.renameTo(outputFile)
-                    Log.e("DEPLOY", "Descarga de ${file.path} completada")
-                    return@withContext
-                }
-                tempFile.delete()
-                Log.e("DEPLOY", "Intento fallido para ${file.path}")
+                jobs.awaitAll()
+                raf.channel.force(true)
             }
-            Log.e("DEPLOY", "Máximos intentos alcanzados para ${file.path}")
+            downloadReport.percent = 100
         }
     }
 }
