@@ -24,12 +24,18 @@ class DownloadService : Service()
     private var bound = false
     private var pending: String? = null
     val client = OkHttpClient.Builder()
+//        .addInterceptor { chain ->
+//            val newRequest = chain.request().newBuilder()
+//                .header("Connection", "close")
+//                .build()
+//            chain.proceed(newRequest)
+//        }
         .connectTimeout(15, TimeUnit.SECONDS)      // conexión inicial
         .readTimeout(30, TimeUnit.MINUTES)        // lectura de bytes grandes
         .writeTimeout(30, TimeUnit.MINUTES)       // si se subiera algo
         .retryOnConnectionFailure(true)           // reintentos automáticos
         .connectionPool(ConnectionPool(
-            5,
+            6,
             30,
             TimeUnit.SECONDS
         ))
@@ -65,6 +71,8 @@ class DownloadService : Service()
         {
             cleanEverything()
         }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
         super.onDestroy()
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -74,7 +82,9 @@ class DownloadService : Service()
         val baseUrl = intent?.getStringExtra("url")
             ?: return START_NOT_STICKY
         if (bound && webSocketService != null)
+        {
             startDownload(baseUrl)
+        }
         else
             pending = baseUrl
 

@@ -129,7 +129,7 @@ class DownloadClass (
         val files = manifest.first
         val bundle = manifest.second
         val outputDir = File(context.getExternalFilesDir(null), bundle)
-        val apk = files.firstOrNull{it.path.endsWith(".apk")} // -> Only one file can be the apk
+        val apk = files.firstOrNull{it.path.endsWith(".apk")}
         if (apk != null)
         {
             val apkName = apk.path.substringAfter("/")
@@ -148,7 +148,7 @@ class DownloadClass (
                 val hash = sha256(finalFile)
                 if (hash == file.sha256)
                 {
-                    Log.e("DEPLOY", "Archivo ya completo, saltando: ${file.path}")
+                    Log.e("DEPLOY", "El archivo ya existe, saltando: ${file.path}")
                     continue // No descargar
                 }
                 else
@@ -279,6 +279,8 @@ class DownloadClass (
                 }
                 jobs.awaitAll()
                 raf.channel.force(true)
+                outputFile.setReadable(true, false)
+                outputFile.setWritable(true, false)
             }
             downloadReport.percent = 100
         }

@@ -30,19 +30,22 @@ class WebSocketService : Service()
             TimeUnit.SECONDS
         ))
         .build()
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = createNotification()
         startForeground(1, notification)
+
         val websocketUrl = intent?.getStringExtra("webSocketUrl")
             ?: return START_STICKY
         val stopWebSocket = intent.getStringExtra("stop")
         val serialNumber = intent.getStringExtra("serialNumber")
             ?: return  START_STICKY
+
         if (!::webSocketClass.isInitialized || !webSocketClass.isConnected()) {
             webSocketClass = WebSocketClass(client, websocketUrl, serialNumber,this)
             webSocketClass.connect()
         }
-        if (::webSocketClass.isInitialized && stopWebSocket != null)
+        else if (::webSocketClass.isInitialized && stopWebSocket != null)
         {
             webSocketClass.disconnect()
         }
@@ -51,6 +54,7 @@ class WebSocketService : Service()
     override fun onDestroy() {
         if (::webSocketClass.isInitialized)
             webSocketClass.disconnect()
+        stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         super.onDestroy()
     }

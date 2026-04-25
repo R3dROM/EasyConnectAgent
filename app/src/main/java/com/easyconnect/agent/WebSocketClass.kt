@@ -8,6 +8,15 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.provider.Settings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -31,13 +40,13 @@ class WebSocketClass(
     private val serialNumber: String,
     context: Context)
 {
-    private var handlerThread: HandlerThread ? = null
+    private var heartBeatJob: Job? = null
+    private var batteryJob: Job? = null
+    private var downloadStatusJob: Job? = null
+    private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var webSocket: WebSocket? = null
-    private lateinit var customLooper : Looper
-    private lateinit var customHandler : Handler
     private var messageQueue = ConcurrentLinkedQueue<String>()
     private val ctx = context
-    private val handler = Handler(Looper.getMainLooper())
     private var isConnected = false
     private var connectionRetries = 3;
 
@@ -59,19 +68,13 @@ class WebSocketClass(
             .url(url)
             .build()
         webSocket = client.newWebSocket(request, socketListener)
-        handlerThread = HandlerThread("Download Messages information")
-        handlerThread!!.start()
-        customLooper = handlerThread!!.looper
-        customHandler = Handler(customLooper)
     }
     fun disconnect() {
         connectionRetries = 3
         isConnected = false
-        handler.removeCallbacksAndMessages(null)
-        handlerThread?.quitSafely()
-        handlerThread = null
         webSocket?.close(1000, "Cierre normal")
         webSocket = null
+        serviceScope.cancel()
     }
     fun isConnected(): Boolean
     {
@@ -107,22 +110,23 @@ class WebSocketClass(
         sendMessage(json)
     }
     fun startHeartbeat() {
-        handler.postDelayed(object : Runnable {
-            override fun run() {
-                if (!isConnected) return
+        heartBeatJob?.cancel()
+
+        heartBeatJob = serviceScope.launch(Dispatchers.IO) {
+            while (isActive && isConnected) {
                 sendMessage("""{"type":"heartbeat"}""")
-                handler.postDelayed(this, 15000)
+                delay(15000)
             }
-        }, 15000)
+        }
     }
     private fun startBattery() {
-        handler.postDelayed(object : Runnable {
-            override fun run() {
-                if (!isConnected) return
+        batteryJob?.cancel()
+        val batteryManager =
+            ctx.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
 
-                val batteryManager =
-                    ctx.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-
+        batteryJob = serviceScope.launch(Dispatchers.IO) {
+            while (isActive && isConnected)
+            {
                 val level = batteryManager.getIntProperty(
                     BatteryManager.BATTERY_PROPERTY_CAPACITY
                 )
@@ -138,10 +142,9 @@ class WebSocketClass(
                 """.trimIndent()
 
                 sendMessage(json)
-
-                handler.postDelayed(this, 5000)
+                delay(5000)
             }
-        }, 1000)
+        }
     }
     private val socketListener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -163,6 +166,7 @@ class WebSocketClass(
             println("📦 Mensaje binario recibido")
         }
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            isConnected = false
             disconnect()
             println("🔌 Cerrando conexión")
         }
@@ -174,9 +178,12 @@ class WebSocketClass(
     }
     fun downloadInfo( downloadReport: DownloadReport)
     {
-        customHandler.postDelayed(object : Runnable {
-            override fun run() {
-                if (!isConnected) return
+        downloadStatusJob?.cancel()
+
+        downloadStatusJob = serviceScope.launch(Dispatchers.IO)
+        {
+            while (isActive && isConnected)
+            {
                 val json = """
                     {
                       "type":"downloadInformation",
@@ -197,16 +204,15 @@ class WebSocketClass(
                 if (downloadReport.status.lowercase() == "download complete")
                 {
                     downloadComplete()
-                    return
                 }
-                customHandler.postDelayed(this, 1000)
+                delay(1000)
             }
-        }, 1000)
+        }
     }
     fun downloadComplete()
     {
-        customHandler.looper.quitSafely()
-        handlerThread!!.quitSafely()
+        downloadStatusJob?.cancel()
+        downloadStatusJob = null
     }
     private fun getIpAddress(): String
     {
