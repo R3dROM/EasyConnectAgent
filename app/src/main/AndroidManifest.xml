@@ -24,15 +24,6 @@
             android:name=".DownloadService"
             android:exported="true"
             android:foregroundServiceType="dataSync"/>
-<!--        <receiver-->
-<!--            android:name=".PackageInstallReceiver"-->
-<!--            android:exported="true">-->
-<!--            <intent-filter>-->
-<!--                <action android:name="android.intent.action.PACKAGE_ADDED"/>-->
-<!--                <action android:name="android.intent.action.PACKAGE_REPLACED"/>-->
-<!--                <data android:scheme="package"/>-->
-<!--            </intent-filter>-->
-<!--        </receiver>-->
         <activity
             android:name=".MainActivity"
             android:exported="true"

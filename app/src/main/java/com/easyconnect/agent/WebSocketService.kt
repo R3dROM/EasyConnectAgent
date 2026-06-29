@@ -38,11 +38,11 @@ class WebSocketService : Service()
         val websocketUrl = intent?.getStringExtra("webSocketUrl")
             ?: return START_STICKY
         val stopWebSocket = intent.getStringExtra("stop")
-        val serialNumber = intent.getStringExtra("serialNumber")
-            ?: return  START_STICKY
+//        val serialNumber = intent.getStringExtra("serialNumber")
+//            ?: return  START_STICKY
 
         if (!::webSocketClass.isInitialized || !webSocketClass.isConnected()) {
-            webSocketClass = WebSocketClass(client, websocketUrl, serialNumber,this)
+            webSocketClass = WebSocketClass(client, websocketUrl,this)
             webSocketClass.connect()
         }
         else if (::webSocketClass.isInitialized && stopWebSocket != null)

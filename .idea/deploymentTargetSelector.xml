@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-03-31T14:02:54.461202700Z">
+        <DropdownSelection timestamp="2026-06-24T14:16:33.858112700Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="Default" identifier="serial=192.168.93.84:5555;connection=30a5ffb9" />
+              <DeviceId pluginId="PhysicalDevice" identifier="serial=PA7L50MGFB180579W" />
             </handle>
           </Target>
         </DropdownSelection>
@@ -15,62 +15,52 @@
           <targets>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.15:5555;connection=cd2b967f" />
+                <DeviceId pluginId="Default" identifier="serial=192.168.2.242:5555;connection=87181e93" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.230:5555;connection=1ca9fa13" />
+                <DeviceId pluginId="Default" identifier="serial=192.168.2.11:5555;connection=8f1d94bf" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.254:5555;connection=fa63c2a8" />
+                <DeviceId pluginId="Default" identifier="serial=192.168.2.181:5555;connection=36546098" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.69:5555;connection=10c29308" />
+                <DeviceId pluginId="Default" identifier="serial=192.168.2.184:5555;connection=144ba260" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.219:5555;connection=1cb8bfd7" />
+                <DeviceId pluginId="Default" identifier="serial=192.168.2.241:5555;connection=2ac66856" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.76:5555;connection=9ec3d15f" />
+                <DeviceId pluginId="Default" identifier="serial=192.168.2.13:5555;connection=c6c82c6a" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.37:5555;connection=8f778e4c" />
+                <DeviceId pluginId="Default" identifier="serial=192.168.2.14:5555;connection=8088d71d" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.144:5555;connection=402fa835" />
+                <DeviceId pluginId="Default" identifier="serial=192.168.2.168:5555;connection=aeb57248" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.134:5555;connection=fbde0ba6" />
+                <DeviceId pluginId="Default" identifier="serial=192.168.2.236:5555;connection=44349a1a" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.103:5555;connection=92609049" />
-              </handle>
-            </Target>
-            <Target type="DEFAULT_BOOT">
-              <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.148:5555;connection=50710c52" />
-              </handle>
-            </Target>
-            <Target type="DEFAULT_BOOT">
-              <handle>
-                <DeviceId pluginId="Default" identifier="serial=192.168.6.223:5555;connection=98ba8745" />
+                <DeviceId pluginId="Default" identifier="serial=192.168.2.234:5555;connection=abd2c42c" />
               </handle>
             </Target>
           </targets>

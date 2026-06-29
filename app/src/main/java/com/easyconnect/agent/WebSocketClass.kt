@@ -1,12 +1,8 @@
 package com.easyconnect.agent
 
 import android.annotation.SuppressLint
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.os.BatteryManager
-import android.os.Handler
-import android.os.HandlerThread
-import android.os.Looper
 import android.provider.Settings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,28 +12,40 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import okhttp3.Dispatcher
+import kotlinx.serialization.Serializable
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
+import java.io.File
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.concurrent.ConcurrentLinkedQueue
+import kotlinx.serialization.json.Json
 
+
+@SuppressLint("UnsafeOptInUsageError")
+@Serializable
+data class AgentConfig(
+    val DeviceId: String = "",
+    val SerialNumber: String = "",
+    val Port: String = "",
+    val FallBackIp: String = "",
+    val SecondsToClick: String = ""
+)
 data object deviceInfo
 {
     var ip : String = "NO IP"
     var MAC: String = "NO MAC"
     var port: String = "5555"
     var serialNumber: String = "XXX"
+    var deviceNumber: String = "NO NUMBER"
 }
 class WebSocketClass(
     private val client: OkHttpClient,
     private val url : String,
-    private val serialNumber: String,
     context: Context)
 {
     private var heartBeatJob: Job? = null
@@ -103,7 +111,8 @@ class WebSocketClass(
                       "type":"register",
                       "payload":{
                         "ip":"${deviceInfo.ip}",
-                        "serialNumber": "${deviceInfo.serialNumber}"
+                        "serialNumber": "${deviceInfo.serialNumber}",
+                        "deviceNumber": "${deviceInfo.deviceNumber}"
                       }
                     }
                 """.trimIndent()
@@ -154,6 +163,7 @@ class WebSocketClass(
             println("MAC: ${deviceInfo.MAC}")
             println("IP: ${deviceInfo.ip}")
             println("SERIAL NUMBER: ${deviceInfo.serialNumber}")
+            println("DEVICE NUMBER: ${deviceInfo.deviceNumber}")
             startConnectionMessage()
             startHeartbeat()
             startBattery()
@@ -230,10 +240,29 @@ class WebSocketClass(
     {
         return Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ANDROID_ID)
     }
+
+    private fun getAgentConfigs(): AgentConfig
+    {
+        val file = File(ctx.getExternalFilesDir(null), "NetworkingConfiguration.json")
+        file.setReadable(true, false)
+        file.setWritable(true, false)
+        file.setExecutable(true, false)
+        if (!file.exists())
+        {
+            return AgentConfig()
+        }
+        val config = Json.decodeFromString<AgentConfig>(
+            file.readText()
+        )
+        return config
+    }
     fun startDeviceInfo()
     {
+        val agentConfig = getAgentConfigs()
+
         deviceInfo.ip = getIpAddress()
         deviceInfo.MAC = getMAC()
-        deviceInfo.serialNumber = serialNumber
+        deviceInfo.serialNumber = agentConfig.SerialNumber
+        deviceInfo.deviceNumber = agentConfig.DeviceId
     }
 }

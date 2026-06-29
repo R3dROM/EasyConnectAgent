@@ -24,12 +24,6 @@ class DownloadService : Service()
     private var bound = false
     private var pending: String? = null
     val client = OkHttpClient.Builder()
-//        .addInterceptor { chain ->
-//            val newRequest = chain.request().newBuilder()
-//                .header("Connection", "close")
-//                .build()
-//            chain.proceed(newRequest)
-//        }
         .connectTimeout(15, TimeUnit.SECONDS)      // conexión inicial
         .readTimeout(30, TimeUnit.MINUTES)        // lectura de bytes grandes
         .writeTimeout(30, TimeUnit.MINUTES)       // si se subiera algo
