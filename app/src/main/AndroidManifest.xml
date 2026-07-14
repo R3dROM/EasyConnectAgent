@@ -15,7 +15,8 @@
         android:icon="@mipmap/ic_launcher"
         android:label="EasyDeployAgent"
         android:theme="@style/Theme.EasyDeployAgent"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security">
         <service
             android:name=".WebSocketService"
             android:exported="true"

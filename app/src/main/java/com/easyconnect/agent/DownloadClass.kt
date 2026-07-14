@@ -1,5 +1,6 @@
 package com.easyconnect.agent
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,8 @@ import java.security.MessageDigest
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
+private const val CHUNK_SIZE = 32L * 1024 * 1024 //32MB
+const val DOWNLOAD_WORKERS = 4
 data class Chunk(val start: Long, val end: Long)
 data class ManifestFile(
     val path: String,
@@ -38,17 +41,18 @@ class DownloadClass (
     private val context: Context
 )
 {
-    fun splitChunks(size: Long, parts: Int): List<Chunk> {
-        val chunkSize = size / parts
-        val chunks = mutableListOf<Chunk>()
+    fun splitChunks(size: Long): ArrayDeque<Chunk> {
+        val queue = ArrayDeque<Chunk>()
 
         var start = 0L
-        for (i in 0 until parts) {
-            val end = if (i == parts - 1) size - 1 else start + chunkSize - 1
-            chunks.add(Chunk(start, end))
+
+        while (start < size) {
+            val end = minOf(start + CHUNK_SIZE - 1, size - 1)
+            queue.addLast(Chunk(start, end))
             start = end + 1
         }
-        return chunks
+
+        return queue
     }
     fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -68,12 +72,11 @@ class DownloadClass (
                     .url(manifestUrl)
                     .build()
 
-                val response = client.newCall(request).execute()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext null
 
-                if (!response.isSuccessful) return@withContext null
-
-                response.body.string()
-
+                    response.body.string()
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 null
@@ -190,8 +193,9 @@ class DownloadClass (
                     .url(url)
                     .addHeader("Range", "bytes=${chunk.start}-${chunk.end}")
                     .build()
+                Log.d("DOWNLOAD", "Solicitando ${chunk.start}-${chunk.end}")
                 client.newCall(request).execute().use { response ->
-
+                    Log.d("DOWNLOAD", "Respuesta recibida ${response.code}")
                     if (!response.isSuccessful) {
                         Log.e("DEPLOY", "Error descargando ${file.path}: ${response.code}")
                     }
@@ -201,9 +205,10 @@ class DownloadClass (
 
                     response.body.byteStream().use { input ->
                         val buffer = ByteArray(1024 * 256)
-
+                        Log.d("DOWNLOAD", "Esperando datos...")
                         while (true) {
                             val read = input.read(buffer)
+                            Log.d("DOWNLOAD", "Leídos: $read")
                             if (read == -1)
                             {
                                 success = true
@@ -231,11 +236,46 @@ class DownloadClass (
                 }
             }
             catch (e: Exception) {
+                Log.e("DOWNLOAD", "Chunk download failed", e)
                 retries--
                 if (retries == 0) throw e
             }
         }
     }
+    @OptIn(ExperimentalAtomicApi::class)
+    private suspend fun downloadWorker(
+        queue: ArrayDeque<Chunk>,
+        queueLock: Any,
+        url: String,
+        channel: FileChannel,
+        file: ManifestFile,
+        downloadedBytes: AtomicLong,
+        totalSize: Long,
+        lastUpdate: AtomicLong,
+        writeLock: Any,
+        onProgress: (Int) -> Unit
+    ) {
+        while (true) {
+
+            val chunk = synchronized(queueLock) {
+                if (queue.isEmpty()) null
+                else queue.removeFirst()
+            } ?: break
+
+            downloadChunk(
+                url,
+                chunk,
+                channel,
+                file,
+                downloadedBytes,
+                totalSize,
+                lastUpdate,
+                writeLock,
+                onProgress
+            )
+        }
+    }
+    @SuppressLint("SetWorldReadable", "SetWorldWritable")
     @OptIn(ExperimentalAtomicApi::class)
     private suspend fun downloadFile(
         baseUrl: String,
@@ -245,8 +285,8 @@ class DownloadClass (
         downloadReport: DownloadReport
     ) {
         withContext(Dispatchers.IO) {
-            val parts = 6
-            val chunks = splitChunks(size, parts)
+            val queue = splitChunks(size)
+            val queueLock = Any()
             val downloadedBytes = AtomicLong(0)
             val lastUpdate = AtomicLong(0)
             val lock = Any()
@@ -261,11 +301,14 @@ class DownloadClass (
                 raf.setLength(size)
                 val channel = raf.channel
 
-                val jobs = chunks.map { chunk ->
+                val jobs = List(DOWNLOAD_WORKERS) {
+
                     async(Dispatchers.IO) {
-                        downloadChunk(
+
+                        downloadWorker(
+                            queue,
+                            queueLock,
                             "${baseUrl}/${file.path}",
-                            chunk,
                             channel,
                             file,
                             downloadedBytes,
@@ -277,6 +320,7 @@ class DownloadClass (
                         }
                     }
                 }
+
                 jobs.awaitAll()
                 raf.channel.force(true)
                 outputFile.setReadable(true, false)

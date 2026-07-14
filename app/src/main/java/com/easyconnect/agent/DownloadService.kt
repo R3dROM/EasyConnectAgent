@@ -9,12 +9,21 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import okhttp3.Call
 import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
+import okhttp3.EventListener
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import java.io.IOException
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
 class DownloadService : Service()
@@ -23,14 +32,47 @@ class DownloadService : Service()
     private var webSocketService: WebSocketService? = null
     private var bound = false
     private var pending: String? = null
+//    val proxy = Proxy(
+//        Proxy.Type.HTTP,
+//        InetSocketAddress("192.168.1.165", 8080)
+//    )
+    val dispatcher = Dispatcher().apply {
+        maxRequests = DOWNLOAD_WORKERS
+        maxRequestsPerHost = DOWNLOAD_WORKERS
+    }
     val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)      // conexión inicial
-        .readTimeout(30, TimeUnit.MINUTES)        // lectura de bytes grandes
+        .eventListener(object : EventListener() {
+
+            override fun responseHeadersStart(call: Call) {
+                Log.d("OKHTTP", "responseHeadersStart")
+            }
+
+            override fun responseHeadersEnd(call: Call, response: Response) {
+                Log.d("OKHTTP", "responseHeadersEnd ${response.code}")
+            }
+
+            override fun responseBodyStart(call: Call) {
+                Log.d("OKHTTP", "responseBodyStart")
+            }
+
+            override fun responseBodyEnd(call: Call, byteCount: Long) {
+                Log.d("OKHTTP", "responseBodyEnd $byteCount")
+            }
+
+            override fun callFailed(call: Call, ioe: IOException) {
+                Log.e("OKHTTP", "callFailed", ioe)
+            }
+        })
+        .dispatcher(dispatcher)
+//        .proxy(proxy)
+        .connectTimeout(1, TimeUnit.MINUTES)      // conexión inicial
+        .readTimeout(2, TimeUnit.MINUTES)        // lectura de bytes grandes
+        .callTimeout(5, TimeUnit.MINUTES)
         .writeTimeout(30, TimeUnit.MINUTES)       // si se subiera algo
         .retryOnConnectionFailure(true)           // reintentos automáticos
         .connectionPool(ConnectionPool(
-            6,
-            30,
+            DOWNLOAD_WORKERS,
+            5,
             TimeUnit.SECONDS
         ))
         .build()
