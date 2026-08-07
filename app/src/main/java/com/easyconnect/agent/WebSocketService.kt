@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
@@ -37,12 +38,13 @@ class WebSocketService : Service()
 
         val websocketUrl = intent?.getStringExtra("webSocketUrl")
             ?: return START_STICKY
+        val registerJobId = intent.getLongExtra("registerJobId", 0)
+            ?: return  START_STICKY
+        Log.i("DEPLOY", websocketUrl)
         val stopWebSocket = intent.getStringExtra("stop")
-//        val serialNumber = intent.getStringExtra("serialNumber")
-//            ?: return  START_STICKY
 
         if (!::webSocketClass.isInitialized || !webSocketClass.isConnected()) {
-            webSocketClass = WebSocketClass(client, websocketUrl,this)
+            webSocketClass = WebSocketClass(client, websocketUrl, registerJobId, this)
             webSocketClass.connect()
         }
         else if (::webSocketClass.isInitialized && stopWebSocket != null)

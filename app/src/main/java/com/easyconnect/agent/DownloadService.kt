@@ -13,17 +13,18 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import okhttp3.Call
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.EventListener
 import okhttp3.OkHttpClient
-import okhttp3.Protocol
 import okhttp3.Response
 import java.io.IOException
-import java.net.InetSocketAddress
-import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
 class DownloadService : Service()
@@ -32,10 +33,11 @@ class DownloadService : Service()
     private var webSocketService: WebSocketService? = null
     private var bound = false
     private var pending: String? = null
-//    val proxy = Proxy(
-//        Proxy.Type.HTTP,
-//        InetSocketAddress("192.168.1.165", 8080)
-//    )
+    private var downloadJobId: Long = 0
+    private var job: Job? = null
+    private val serviceJob = SupervisorJob()
+    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+
     val dispatcher = Dispatcher().apply {
         maxRequests = DOWNLOAD_WORKERS
         maxRequestsPerHost = DOWNLOAD_WORKERS
@@ -64,7 +66,6 @@ class DownloadService : Service()
             }
         })
         .dispatcher(dispatcher)
-//        .proxy(proxy)
         .connectTimeout(1, TimeUnit.MINUTES)      // conexión inicial
         .readTimeout(2, TimeUnit.MINUTES)        // lectura de bytes grandes
         .callTimeout(5, TimeUnit.MINUTES)
@@ -84,7 +85,7 @@ class DownloadService : Service()
             bound = true
 
             pending?.let {
-                startDownload(it)
+                startDownload(it, downloadJobId)
                 pending = null
             }
         }
@@ -107,6 +108,7 @@ class DownloadService : Service()
         {
             cleanEverything()
         }
+        serviceJob.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         super.onDestroy()
@@ -115,23 +117,35 @@ class DownloadService : Service()
         val notification = createNotification()
         startForeground(2, notification)
 
+        downloadJobId = intent?.getLongExtra("downloadJobId", 0) ?: 0
+        val cancel = intent?.getBooleanExtra("cancel", false) ?: false
+        if (cancel)
+        {
+            cancelDownload()
+            return  START_NOT_STICKY
+        }
         val baseUrl = intent?.getStringExtra("url")
             ?: return START_NOT_STICKY
         if (bound && webSocketService != null)
         {
-            startDownload(baseUrl)
+            startDownload(baseUrl, downloadJobId)
         }
         else
             pending = baseUrl
 
         return START_NOT_STICKY
     }
-    private fun startDownload(baseUrl: String)
+    private fun startDownload(baseUrl: String, jobId: Long)
     {
-        CoroutineScope(Dispatchers.IO).launch {
-            downloadClass = DownloadClass(client, webSocketService, this@DownloadService)
-            downloadClass.downloadExperience(baseUrl)
+        job = serviceScope.launch {
+            downloadClass = DownloadClass(client, webSocketService,this@DownloadService)
+            downloadClass.downloadExperience(baseUrl, jobId)
         }
+    }
+    private fun cancelDownload()
+    {
+        job?.cancel()
+        dispatcher.cancelAll()
     }
     private fun createNotification(): Notification {
         val channelId = "deploy_channel"

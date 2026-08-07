@@ -24,8 +24,8 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlinx.serialization.json.Json
-
-
+import org.json.JSONObject
+import kotlin.time.Duration.Companion.milliseconds
 @SuppressLint("UnsafeOptInUsageError")
 @Serializable
 data class AgentConfig(
@@ -35,7 +35,7 @@ data class AgentConfig(
     val FallBackIp: String = "",
     val SecondsToClick: String = ""
 )
-data object deviceInfo
+data object DeviceInfo
 {
     var ip : String = "NO IP"
     var MAC: String = "NO MAC"
@@ -46,6 +46,7 @@ data object deviceInfo
 class WebSocketClass(
     private val client: OkHttpClient,
     private val url : String,
+    private val registerJobId: Long,
     context: Context)
 {
     private var heartBeatJob: Job? = null
@@ -60,15 +61,15 @@ class WebSocketClass(
 
     fun getSerialNumber(): String
     {
-        return deviceInfo.serialNumber
+        return DeviceInfo.serialNumber
     }
     fun getDeviceIp() : String
     {
-        return deviceInfo.ip
+        return DeviceInfo.ip
     }
     fun getDeviceMAC() : String
     {
-        return deviceInfo.MAC
+        return DeviceInfo.MAC
     }
     fun connect() {
         startDeviceInfo()
@@ -108,11 +109,13 @@ class WebSocketClass(
     {
         val json = """
                     {
-                      "type":"register",
+                      "type":"${MessageType.Register}",
                       "payload":{
-                        "ip":"${deviceInfo.ip}",
-                        "serialNumber": "${deviceInfo.serialNumber}",
-                        "deviceNumber": "${deviceInfo.deviceNumber}"
+                        "ip":"${DeviceInfo.ip}",
+                        "serialNumber": "${DeviceInfo.serialNumber}",
+                        "deviceNumber": "${DeviceInfo.deviceNumber}",
+                        "status": "${MessageStatus.Complete}",
+                        "jobId": $registerJobId
                       }
                     }
                 """.trimIndent()
@@ -123,8 +126,8 @@ class WebSocketClass(
 
         heartBeatJob = serviceScope.launch(Dispatchers.IO) {
             while (isActive && isConnected) {
-                sendMessage("""{"type":"heartbeat"}""")
-                delay(15000)
+                sendMessage("""{"type":"${MessageType.Heartbeat}"}""")
+                delay(15000.milliseconds)
             }
         }
     }
@@ -142,16 +145,16 @@ class WebSocketClass(
 
                 val json = """
                     {
-                      "type":"battery",
+                      "type":"${MessageType.Battery}",
                       "payload":{
-                        "ip":"${deviceInfo.ip}",
+                        "ip":"${DeviceInfo.ip}",
                         "batteryLvl":$level
                       }
                     }
                 """.trimIndent()
 
                 sendMessage(json)
-                delay(5000)
+                delay(5000.milliseconds)
             }
         }
     }
@@ -160,10 +163,10 @@ class WebSocketClass(
             isConnected = true
 
             println("✅ Conectado al servidor")
-            println("MAC: ${deviceInfo.MAC}")
-            println("IP: ${deviceInfo.ip}")
-            println("SERIAL NUMBER: ${deviceInfo.serialNumber}")
-            println("DEVICE NUMBER: ${deviceInfo.deviceNumber}")
+            println("MAC: ${DeviceInfo.MAC}")
+            println("IP: ${DeviceInfo.ip}")
+            println("SERIAL NUMBER: ${DeviceInfo.serialNumber}")
+            println("DEVICE NUMBER: ${DeviceInfo.deviceNumber}")
             startConnectionMessage()
             startHeartbeat()
             startBattery()
@@ -196,26 +199,27 @@ class WebSocketClass(
             {
                 val json = """
                     {
-                      "type":"downloadInformation",
+                      "type":"${MessageType.Download}",
                       "payload":{
-                        "ip": "${deviceInfo.ip}",
-                        "serialNumber": "${deviceInfo.serialNumber}",
+                        "ip": "${DeviceInfo.ip}",
+                        "serialNumber": "${DeviceInfo.serialNumber}",
                         "status": "${downloadReport.status}",
                         "bundle": "${downloadReport.bundle}",
                         "apkName": "${downloadReport.apkName}",
                         "apkSize": ${downloadReport.apkSize},
                         "timestamp": ${downloadReport.timestamp},
                         "percent": ${downloadReport.percent},
-                        "currentFile": "${downloadReport.currentFile}"
+                        "currentFile": "${downloadReport.currentFile}",
+                        "jobId": ${downloadReport.jobId}
                       }
                     }
                 """.trimIndent()
                 sendMessage(json)
-                if (downloadReport.status.lowercase() == "download complete")
+                if (downloadReport.status == MessageStatus.Complete || downloadReport.status == MessageStatus.Cancel)
                 {
                     downloadComplete()
                 }
-                delay(1000)
+                delay(1000.milliseconds)
             }
         }
     }
@@ -241,6 +245,7 @@ class WebSocketClass(
         return Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ANDROID_ID)
     }
 
+    @SuppressLint("SetWorldReadable", "SetWorldWritable")
     private fun getAgentConfigs(): AgentConfig
     {
         val file = File(ctx.getExternalFilesDir(null), "NetworkingConfiguration.json")
@@ -260,9 +265,9 @@ class WebSocketClass(
     {
         val agentConfig = getAgentConfigs()
 
-        deviceInfo.ip = getIpAddress()
-        deviceInfo.MAC = getMAC()
-        deviceInfo.serialNumber = agentConfig.SerialNumber
-        deviceInfo.deviceNumber = agentConfig.DeviceId
+        DeviceInfo.ip = getIpAddress()
+        DeviceInfo.MAC = getMAC()
+        DeviceInfo.serialNumber = agentConfig.SerialNumber
+        DeviceInfo.deviceNumber = agentConfig.DeviceId
     }
 }

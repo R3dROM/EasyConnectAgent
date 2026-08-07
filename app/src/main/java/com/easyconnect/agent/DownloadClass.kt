@@ -6,6 +6,9 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,6 +20,8 @@ import java.nio.channels.FileChannel
 import java.security.MessageDigest
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.coroutines.coroutineContext
 
 private const val CHUNK_SIZE = 32L * 1024 * 1024 //32MB
 const val DOWNLOAD_WORKERS = 4
@@ -29,11 +34,12 @@ data class ManifestFile(
 data class DownloadReport(
     val apkSize: Long = 0L,
     val apkName: String = "null",
-    var status: String = "null",
+    var status: MessageStatus = MessageStatus.Waiting,
     var bundle: String = "null",
     var timestamp: Long = 0L,
     var percent: Int = 0,
-    var currentFile: String = "null"
+    var currentFile: String = "null",
+    val jobId: Long = 0
 )
 class DownloadClass (
     private val client: OkHttpClient,
@@ -72,7 +78,11 @@ class DownloadClass (
                     .url(manifestUrl)
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                val call = client.newCall(request)
+                coroutineContext.job.invokeOnCompletion {
+                    call.cancel()
+                }
+                call.execute().use { response ->
                     if (!response.isSuccessful) return@withContext null
 
                     response.body.string()
@@ -121,7 +131,7 @@ class DownloadClass (
         }
         return Pair(filesList, bundle)
     }
-    suspend fun downloadExperience(baseUrl: String) {
+    suspend fun downloadExperience(baseUrl: String?, jobId: Long) {
         lateinit var downloadReport : DownloadReport
         val manifestUrl = "$baseUrl/manifest.json"
         val manifestRaw = downloadManifestRaw(manifestUrl)
@@ -139,35 +149,46 @@ class DownloadClass (
             downloadReport = DownloadReport(
                 apkSize = apk.size,
                 apkName = apkName,
-                status = "Downloading",
+                status = MessageStatus.Downloading,
                 bundle = bundle,
+                jobId = jobId
             )
         }
-        webSocketService?.sendDownloadStatus(downloadReport)
-        for (file in files) {
-            val finalFile = File(outputDir, file.path)
-            if (finalFile.exists() && finalFile.length() == file.size)
-            {
-                val hash = sha256(finalFile)
-                if (hash == file.sha256)
+        try {
+            webSocketService?.sendDownloadStatus(downloadReport)
+            for (file in files) {
+                currentCoroutineContext().ensureActive()
+                val finalFile = File(outputDir, file.path)
+                if (finalFile.exists() && finalFile.length() == file.size)
                 {
-                    Log.e("DEPLOY", "El archivo ya existe, saltando: ${file.path}")
-                    continue // No descargar
+                    val hash = sha256(finalFile)
+                    if (hash == file.sha256)
+                    {
+                        Log.e("DEPLOY", "El archivo ya existe, saltando: ${file.path}")
+                        continue // No descargar
+                    }
+                    else
+                    {
+                        finalFile.delete()
+                        downloadReport.status = MessageStatus.Fail
+                        Log.e("DEPLOY","${file.path} está corrupto o ha cambiado, volviendo a descargar")
+                    }
                 }
-                else
-                {
-                    finalFile.delete()
-                    Log.e("DEPLOY","${file.path} está corrupto o ha cambiado, volviendo a descargar")
-                }
+                downloadReport.status = MessageStatus.Downloading
+                Log.e("DEPLOY", "Descargando ${file.path}")
+                downloadReport.currentFile = "(${files.indexOf(file) + 1}/${files.size}) - ${finalFile.name}"
+                downloadFile(baseUrl, file, outputDir, file.size, downloadReport)
             }
-            Log.e("DEPLOY", "Descargando ${file.path}")
-            downloadReport.currentFile = "(${files.indexOf(file) + 1}/${files.size}) - ${finalFile.name}"
-            downloadFile(baseUrl, file, outputDir, file.size, downloadReport)
+            Log.e("DEPLOY", "Descarga completa")
+            val end = android.os.SystemClock.elapsedRealtime()
+            downloadReport.status = MessageStatus.Complete
+            downloadReport.timestamp = end - start
         }
-        Log.e("DEPLOY", "Descarga completa")
-        val end = android.os.SystemClock.elapsedRealtime()
-        downloadReport.status = "Download Complete"
-        downloadReport.timestamp = end - start
+        catch (e: CancellationException) {
+            val end = android.os.SystemClock.elapsedRealtime()
+            downloadReport.status = MessageStatus.Cancel
+            downloadReport.timestamp = end - start
+        }
     }
     @OptIn(ExperimentalAtomicApi::class)
     suspend fun downloadChunk(
@@ -188,13 +209,18 @@ class DownloadClass (
 
         while (!success && retries > 0)
         {
+            coroutineContext.ensureActive()
             try {
                 val request = Request.Builder()
                     .url(url)
                     .addHeader("Range", "bytes=${chunk.start}-${chunk.end}")
                     .build()
                 Log.d("DOWNLOAD", "Solicitando ${chunk.start}-${chunk.end}")
-                client.newCall(request).execute().use { response ->
+                val call = client.newCall(request)
+                coroutineContext.job.invokeOnCompletion {
+                    call.cancel()
+                }
+                call.execute().use { response ->
                     Log.d("DOWNLOAD", "Respuesta recibida ${response.code}")
                     if (!response.isSuccessful) {
                         Log.e("DEPLOY", "Error descargando ${file.path}: ${response.code}")
@@ -207,6 +233,7 @@ class DownloadClass (
                         val buffer = ByteArray(1024 * 256)
                         Log.d("DOWNLOAD", "Esperando datos...")
                         while (true) {
+                            coroutineContext.ensureActive()
                             val read = input.read(buffer)
                             Log.d("DOWNLOAD", "Leídos: $read")
                             if (read == -1)
@@ -235,6 +262,9 @@ class DownloadClass (
                     }
                 }
             }
+            catch (e: CancellationException) {
+                throw e
+            }
             catch (e: Exception) {
                 Log.e("DOWNLOAD", "Chunk download failed", e)
                 retries--
@@ -256,7 +286,7 @@ class DownloadClass (
         onProgress: (Int) -> Unit
     ) {
         while (true) {
-
+            currentCoroutineContext().ensureActive()
             val chunk = synchronized(queueLock) {
                 if (queue.isEmpty()) null
                 else queue.removeFirst()
@@ -278,20 +308,21 @@ class DownloadClass (
     @SuppressLint("SetWorldReadable", "SetWorldWritable")
     @OptIn(ExperimentalAtomicApi::class)
     private suspend fun downloadFile(
-        baseUrl: String,
+        baseUrl: String?,
         file: ManifestFile,
         outputDir: File,
         size: Long,
         downloadReport: DownloadReport
     ) {
         withContext(Dispatchers.IO) {
+            coroutineContext.ensureActive()
             val queue = splitChunks(size)
             val queueLock = Any()
             val downloadedBytes = AtomicLong(0)
             val lastUpdate = AtomicLong(0)
             val lock = Any()
             val outputFile = if (file.path == "CONFIGS/${webSocketService?.getSerialNumber()}.json") {
-                File(outputDir, "CONFIGS/NetworkingConfiguration.json")
+                File(outputDir, "files/NetworkingConfiguration.json")
             } else {
                 File(outputDir, file.path)
             }
