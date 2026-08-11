@@ -1,9 +1,7 @@
 package com.easyconnect.agent
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.os.BatteryManager
-import android.provider.Settings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -12,37 +10,18 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
-import java.io.File
-import java.net.Inet4Address
-import java.net.NetworkInterface
-import java.util.concurrent.ConcurrentLinkedQueue
-import kotlinx.serialization.json.Json
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentLinkedQueue
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
-@SuppressLint("UnsafeOptInUsageError")
-@Serializable
-data class AgentConfig(
-    val DeviceId: String = "",
-    val SerialNumber: String = "",
-    val Port: String = "",
-    val FallBackIp: String = "",
-    val SecondsToClick: String = ""
-)
-data object DeviceInfo
-{
-    var ip : String = "NO IP"
-    var MAC: String = "NO MAC"
-    var port: String = "5555"
-    var serialNumber: String = "XXX"
-    var deviceNumber: String = "NO NUMBER"
-}
+import kotlin.time.ExperimentalTime
+
 class WebSocketClass(
     private val client: OkHttpClient,
     private val url : String,
@@ -62,14 +41,6 @@ class WebSocketClass(
     fun getSerialNumber(): String
     {
         return DeviceInfo.serialNumber
-    }
-    fun getDeviceIp() : String
-    {
-        return DeviceInfo.ip
-    }
-    fun getDeviceMAC() : String
-    {
-        return DeviceInfo.MAC
     }
     fun connect() {
         startDeviceInfo()
@@ -121,12 +92,21 @@ class WebSocketClass(
                 """.trimIndent()
         sendMessage(json)
     }
+    @OptIn(ExperimentalTime::class)
     fun startHeartbeat() {
         heartBeatJob?.cancel()
 
         heartBeatJob = serviceScope.launch(Dispatchers.IO) {
             while (isActive && isConnected) {
-                sendMessage("""{"type":"${MessageType.Heartbeat}"}""")
+                val payload = JSONObject().apply {
+                    put("ip", DeviceInfo.ip)
+                    put("dateTime", Clock.System.now())
+                }
+                val json = JSONObject().apply {
+                    put("type", MessageType.Heartbeat)
+                    put("payload", payload)
+                }
+                sendMessage(json.toString())
                 delay(15000.milliseconds)
             }
         }
@@ -163,7 +143,6 @@ class WebSocketClass(
             isConnected = true
 
             println("✅ Conectado al servidor")
-            println("MAC: ${DeviceInfo.MAC}")
             println("IP: ${DeviceInfo.ip}")
             println("SERIAL NUMBER: ${DeviceInfo.serialNumber}")
             println("DEVICE NUMBER: ${DeviceInfo.deviceNumber}")
@@ -228,46 +207,9 @@ class WebSocketClass(
         downloadStatusJob?.cancel()
         downloadStatusJob = null
     }
-    private fun getIpAddress(): String
-    {
-        NetworkInterface.getNetworkInterfaces().toList().forEach { networkInterface ->
-            if (!networkInterface.isUp || networkInterface.isLoopback) return@forEach
-            networkInterface.inetAddresses.toList().forEach { address ->
-                if (address is Inet4Address && !address.isLoopbackAddress && networkInterface.name == "wlan0")
-                    return address.hostAddress ?: "NO IP"
-            }
-        }
-        return "NO WLAN0"
-    }
-    @SuppressLint("HardwareIds")
-    private fun getMAC(): String
-    {
-        return Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ANDROID_ID)
-    }
 
-    @SuppressLint("SetWorldReadable", "SetWorldWritable")
-    private fun getAgentConfigs(): AgentConfig
-    {
-        val file = File(ctx.getExternalFilesDir(null), "NetworkingConfiguration.json")
-        file.setReadable(true, false)
-        file.setWritable(true, false)
-        file.setExecutable(true, false)
-        if (!file.exists())
-        {
-            return AgentConfig()
-        }
-        val config = Json.decodeFromString<AgentConfig>(
-            file.readText()
-        )
-        return config
-    }
     fun startDeviceInfo()
     {
-        val agentConfig = getAgentConfigs()
-
-        DeviceInfo.ip = getIpAddress()
-        DeviceInfo.MAC = getMAC()
-        DeviceInfo.serialNumber = agentConfig.SerialNumber
-        DeviceInfo.deviceNumber = agentConfig.DeviceId
+        PersistentData.getAgentConfigs()
     }
 }

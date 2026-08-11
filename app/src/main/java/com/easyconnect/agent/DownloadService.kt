@@ -67,8 +67,8 @@ class DownloadService : Service()
         })
         .dispatcher(dispatcher)
         .connectTimeout(1, TimeUnit.MINUTES)      // conexión inicial
-        .readTimeout(2, TimeUnit.MINUTES)        // lectura de bytes grandes
-        .callTimeout(5, TimeUnit.MINUTES)
+        .readTimeout(30, TimeUnit.MINUTES)        // lectura de bytes grandes
+        .callTimeout(0, TimeUnit.MINUTES)
         .writeTimeout(30, TimeUnit.MINUTES)       // si se subiera algo
         .retryOnConnectionFailure(true)           // reintentos automáticos
         .connectionPool(ConnectionPool(

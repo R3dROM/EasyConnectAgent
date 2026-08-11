@@ -21,9 +21,9 @@ class WebSocketService : Service()
     private val binder = LocalBinder()
     val client = OkHttpClient.Builder()
         .pingInterval(15, TimeUnit.SECONDS)
-        .connectTimeout(60, TimeUnit.SECONDS)      // conexión inicial
-        .readTimeout(30, TimeUnit.MINUTES)        // lectura de bytes grandes
-        .writeTimeout(30, TimeUnit.MINUTES)       // si se subiera algo
+        .connectTimeout(1, TimeUnit.MINUTES)      // conexión inicial
+        .readTimeout(0, TimeUnit.MINUTES)        // lectura de bytes grandes
+        .writeTimeout(0, TimeUnit.MINUTES)       // si se subiera algo
         .retryOnConnectionFailure(true)           // reintentos automáticos
         .connectionPool(ConnectionPool(
             1,
@@ -39,7 +39,7 @@ class WebSocketService : Service()
         val websocketUrl = intent?.getStringExtra("webSocketUrl")
             ?: return START_STICKY
         val registerJobId = intent.getLongExtra("registerJobId", 0)
-            ?: return  START_STICKY
+
         Log.i("DEPLOY", websocketUrl)
         val stopWebSocket = intent.getStringExtra("stop")
 
@@ -68,14 +68,6 @@ class WebSocketService : Service()
     fun getSerialNumber(): String
     {
         return webSocketClass.getSerialNumber()
-    }
-    fun getIpAddress() : String
-    {
-        return webSocketClass.getDeviceIp()
-    }
-    fun getMAC() : String
-    {
-        return  webSocketClass.getDeviceMAC()
     }
     private fun createNotification(): Notification {
         val channelId = "deploy_channel"

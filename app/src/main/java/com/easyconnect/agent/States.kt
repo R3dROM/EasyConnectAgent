@@ -1,6 +1,7 @@
 package com.easyconnect.agent
 enum class MessageStatus
 {
+    Boot,
     Waiting,
     Connected,
     Downloading,
