@@ -1,4 +1,4 @@
-package com.easyconnect.agent.network
+package com.easyconnect.agent.network.websocket
 
 import android.content.Context
 import android.os.BatteryManager

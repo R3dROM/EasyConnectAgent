@@ -11,7 +11,7 @@ import com.easyconnect.agent.interfaces.IAgentConfigurationWriter
 import com.easyconnect.agent.interfaces.IPicoConfigurationReader
 import com.easyconnect.agent.interfaces.IPicoConfigurationWriter
 import com.easyconnect.agent.network.AsyncUdpClient
-import com.easyconnect.agent.network.Communicator
+import com.easyconnect.agent.network.websocket.Communicator
 import com.flyfishxu.kadb.Kadb
 
 object AgentDependencies {
