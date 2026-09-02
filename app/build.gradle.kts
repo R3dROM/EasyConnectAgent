@@ -1,13 +1,12 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
+    alias(libs.plugins.kotlin.serialization)
 }
-
 android {
     namespace = "com.easyconnect.agent"
     compileSdk {
-        version = release(36) {
+        version = release(37) {
             minorApiLevel = 1
         }
     }
@@ -15,7 +14,7 @@ android {
     defaultConfig {
         applicationId = "com.easyconnect.agent"
         minSdk = 29
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
@@ -39,9 +38,14 @@ android {
         compose = true
     }
 }
+
 dependencies {
+    implementation(libs.kadb)
+    implementation(libs.gson)
+    implementation(libs.datastore.preferences)
+    implementation(files("libs/tobservicelib-5.6.0.aar"))
     implementation(libs.androidx.work.runtime.ktx)
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

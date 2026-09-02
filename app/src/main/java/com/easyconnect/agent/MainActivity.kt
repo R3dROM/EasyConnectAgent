@@ -20,7 +20,6 @@ import com.easyconnect.agent.ui.theme.EasyDeployAgentTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        startBootConnection(this)
         enableEdgeToEdge()
         setContent {
             EasyDeployAgentTheme {
@@ -32,20 +31,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-}
-fun startBootConnection(context: Context?)
-{
-    val request = OneTimeWorkRequestBuilder<BootNotifier>()
-        .build()
-    Log.e("BOOT_RECEIVER", "Enqueieng ${request.id}")
-    Log.e("BOOT_RECEIVER","context boot $context")
-    if (context != null)
-    {
-        PersistentData.readNetworkingConfiguration(context)
-        WorkManager
-            .getInstance(context)
-            .enqueue(request)
     }
 }
 @Composable
