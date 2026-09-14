@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.MANAGE_DEVICE_POLICY_SAFE_BOOT"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+
 
     <application
         android:allowBackup="false"
@@ -17,14 +21,37 @@
         android:theme="@style/Theme.EasyDeployAgent"
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security">
+        <meta-data
+            android:name="pico_advance_interface"
+            android:value="0"/>
+        <receiver
+            android:name=".admin.EasyDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+
+        </receiver>
         <service
-            android:name=".WebSocketService"
+            android:name=".service.EasyAgentService"
             android:exported="true"
-            android:foregroundServiceType="dataSync"/>
+            android:foregroundServiceType="dataSync">
+            <intent-filter>
+                <action android:name="com.pvr.tobservice.SERVICE_AUTO_BOOT"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </service>
         <service
-            android:name=".DownloadService"
+            android:name=".service.WebSocketService"
             android:exported="true"
-            android:foregroundServiceType="dataSync"/>
+            android:foregroundServiceType="dataSync"
+            android:permission="android.permission.INTERNET"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
