@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.easyconnect.agent.model.MessageStatus
+import com.easyconnect.agent.model.DeviceStatus
 import com.easyconnect.agent.model.MessageType
 import com.easyconnect.agent.data.PersistentData
 import kotlinx.coroutines.Job
@@ -63,7 +63,7 @@ private fun bootConnection(): Boolean
             put("serialNumber", agent.serialNumber)
             put("deviceId", agent.deviceNumber)
             put("ip", agent.ip)
-            put("status", MessageStatus.Boot)
+            put("status", DeviceStatus.Boot)
         }
         val json = JSONObject().apply {
             put("type", MessageType.Register)

@@ -5,11 +5,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.easyconnect.agent.configuration.agent.AgentConfiguration
-import com.easyconnect.agent.configuration.download.DownloadConfiguration
+import com.easyconnect.agent.configuration.ActivityConfiguration
 import com.easyconnect.agent.core.EasyAgentClass
+import com.easyconnect.agent.model.CommandType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,34 +40,33 @@ class EasyAgentService : Service()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val intentService = intent?.getStringExtra(AgentConfiguration.TARGET_SERVICE)
-        Log.i("INTENT", "receive: $intentService")
-        when(intentService)
+        val command = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent?.getSerializableExtra(
+                ActivityConfiguration.TARGET,
+                CommandType::class.java
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            intent?.getSerializableExtra(
+                ActivityConfiguration.TARGET
+            ) as? CommandType?
+        }
+        val jobId = intent?.getLongExtra(ActivityConfiguration.JOB_ID, -1) ?: -1
+        val extras = intent?.getBundleExtra(ActivityConfiguration.EXTRAS)
+        Log.i("INTENT", "receive: $command")
+        when
         {
-            AgentConfiguration.STOP_DEPLOYMENT_SERVICE ->
-            {
-                val stopDeployment = intent.getBooleanExtra(DownloadConfiguration.DOWNLOAD_CANCELLATION, false)
-                if (stopDeployment)
-                {
-                    reset()
-                    return START_STICKY
-                }
-            }
-
-            AgentConfiguration.START_DEPLOYMENT_SERVICE -> {
-                Log.i("INTENT", "starting: $intentService")
-
+            command == CommandType.Deployment -> {
                 deploymentJob = serviceScope.launch {
-                    easyAgentClass?.startDeploymentService(intent)
+                    easyAgentClass?.startDeploymentService(jobId, extras)
                 }
             }
-            AgentConfiguration.START_EXPERIENCE ->
+            command ==  CommandType.Activity ->
             {
                 experienceJob = serviceScope.launch {
-                    easyAgentClass?.startExperience(intent)
+                    easyAgentClass?.startExperience(jobId,command,extras)
                 }
             }
-            AgentConfiguration.START_PICO_CONFIGURATION -> {}
         }
 
         return START_STICKY

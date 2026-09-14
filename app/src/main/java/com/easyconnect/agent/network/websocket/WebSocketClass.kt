@@ -3,11 +3,15 @@ package com.easyconnect.agent.network.websocket
 import android.content.Context
 import android.os.BatteryManager
 import android.util.Log
-import com.easyconnect.agent.data.queue.DownloadReportPublisher
-import com.easyconnect.agent.model.MessageStatus
+import com.easyconnect.agent.configuration.agent.AgentConfiguration
+import com.easyconnect.agent.data.queue.Communicator
+import com.easyconnect.agent.model.DeviceStatus
 import com.easyconnect.agent.model.MessageType
 import com.easyconnect.agent.data.PersistentData
+import com.easyconnect.agent.interfaces.IInterpreter
 import com.easyconnect.agent.interfaces.IWebSocket
+import com.easyconnect.agent.network.report.Report
+import com.easyconnect.agent.utilities.JsonBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -22,7 +27,6 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
-import org.json.JSONObject
 import java.io.IOException
 import java.net.SocketException
 import java.net.SocketTimeoutException
@@ -32,9 +36,10 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.ExperimentalTime
 
-class Communicator(
+class WebSocketClass(
     private var url : String,
     private val registerJobId: Long,
+    private val interpreter: IInterpreter,
     private val context: Context
 ) : IWebSocket
 {
@@ -49,13 +54,14 @@ class Communicator(
             Log.i("WEB_SOCKET", "CONNECTED SUCCESSFUL")
             isConnected = true
             startConnectionMessage()
-            sendReportInfo()
+            sendReport()
             startHeartbeat()
             startBattery()
             flushQueue()
         }
         override fun onMessage(webSocket: WebSocket, text: String) {
             Log.i("WEB_SOCKET","📩 Mensaje recibido: $text")
+            interpreter.decodeToCommand(text)
         }
         override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
             Log.i("WEB_SOCKET","📦 Mensaje binario recibido")
@@ -68,12 +74,12 @@ class Communicator(
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             isConnected = false
             Log.i("WEB_SOCKET","❌ Error: ${t.message}")
-            disconnect()
+            retryConnection()
         }
     }
     private var heartBeatJob: Job? = null
     private var batteryJob: Job? = null
-    private var downloadStatusJob: Job? = null
+    private var reportInformationJob: Job? = null
     private var messageQueue = ConcurrentLinkedQueue<String>()
     private var connectionRetries = 3
     override fun startWebSocketClient() {
@@ -104,6 +110,7 @@ class Communicator(
             val request = Request.Builder()
                 .url(url)
                 .addHeader("key", "PICO")
+                .addHeader("serial", PersistentData.agentConfigurationReader.serialNumber)
                 .build()
             socket = client?.newWebSocket(request, socketListener)
             socket?.let {
@@ -131,7 +138,7 @@ class Communicator(
         socket = null
         isConnected = false
         connectionRetries = 3
-        downloadStatusJob?.cancel()
+        reportInformationJob?.cancel()
         heartBeatJob?.cancel()
         batteryJob?.cancel()
         Log.i("WEB_SOCKET", "Socket Disconnected")
@@ -141,7 +148,10 @@ class Communicator(
         isConnected
 
     override fun retryConnection() {
-
+        if (--connectionRetries <= 0)
+            disconnect()
+        else
+            startWebSocketClient()
     }
 
     override fun flushQueue()
@@ -163,19 +173,20 @@ class Communicator(
 
     private fun startConnectionMessage()
     {
-        val json = """
-                    {
-                      "type":"${MessageType.Register}",
-                      "payload":{
-                        "ip":"${PersistentData.agentConfigurationReader.ip}",
-                        "serialNumber": "${PersistentData.agentConfigurationReader.serialNumber}",
-                        "deviceNumber": "${PersistentData.agentConfigurationReader.deviceNumber}",
-                        "status": "${MessageStatus.Complete}",
-                        "jobId": $registerJobId
-                      }
-                    }
-                """.trimIndent()
-        sendMessage(json)
+        serviceScope.launch {
+            val payload = JsonBuilder.putExtras(
+                JsonBuilder.extra("ip", PersistentData.agentConfigurationReader.ip),
+                JsonBuilder.extra("serialNumber", PersistentData.agentConfigurationReader.serialNumber),
+                JsonBuilder.extra("deviceNumber", PersistentData.agentConfigurationReader.deviceNumber),
+                JsonBuilder.extra("status", DeviceStatus.Online)
+            )
+            val report = Report(
+                id = PersistentData.agentConfigurationReader.serialNumber,
+                type = MessageType.Register,
+                payload = payload
+            )
+            Communicator.publishReport(report)
+        }
     }
     @OptIn(ExperimentalTime::class)
     fun startHeartbeat() {
@@ -183,15 +194,18 @@ class Communicator(
 
         heartBeatJob = serviceScope.launch(Dispatchers.IO) {
             while (isActive && isConnected) {
-                val payload = JSONObject().apply {
-                    put("ip", PersistentData.agentConfigurationReader.ip)
-                    put("dateTime", Clock.System.now())
-                }
-                val json = JSONObject().apply {
-                    put("type", MessageType.Heartbeat)
-                    put("payload", payload)
-                }
-                sendMessage(json.toString())
+                val time = Clock.System.now()
+
+                val payload = JsonBuilder.putExtras(
+                    JsonBuilder.extra("dateTime", time.nanosecondsOfSecond)
+                )
+
+                val report = Report(
+                    id = PersistentData.agentConfigurationReader.serialNumber,
+                    type = MessageType.Heartbeat,
+                    payload = payload
+                )
+                Communicator.publishReport(report)
                 delay(15000.milliseconds)
             }
         }
@@ -208,48 +222,32 @@ class Communicator(
                     BatteryManager.BATTERY_PROPERTY_CAPACITY
                 )
 
-                val json = """
-                    {
-                      "type":"${MessageType.Battery}",
-                      "payload":{
-                        "ip":"${PersistentData.agentConfigurationReader.ip}",
-                        "batteryLvl":$level
-                      }
-                    }
-                """.trimIndent()
+                val payload = JsonBuilder.putExtras(
+                    JsonBuilder.extra("batteryLvl", level)
+                )
 
-                sendMessage(json)
+                val report = Report(
+                    id = PersistentData.agentConfigurationReader.serialNumber,
+                    type = MessageType.Battery,
+                    payload = payload
+                )
+                Communicator.publishReport(report)
                 delay(5000.milliseconds)
             }
         }
     }
-    fun sendReportInfo()
+    fun sendReport()
     {
-        downloadStatusJob?.cancel()
+        reportInformationJob?.cancel()
 
-        downloadStatusJob = serviceScope.launch(Dispatchers.IO)
+        reportInformationJob = serviceScope.launch(Dispatchers.IO)
         {
             while (isActive)
             {
-                val report = DownloadReportPublisher.receive()
-                val json = """
-                    {
-                      "type":"${MessageType.Download}",
-                      "payload":{
-                        "ip": "${PersistentData.agentConfigurationReader.ip}",
-                        "serialNumber": "${PersistentData.agentConfigurationReader.serialNumber}",
-                        "status": "${report.status}",
-                        "bundle": "${report.bundle}",
-                        "apkName": "${report.apkName}",
-                        "apkSize": ${report.apkSize},
-                        "timestamp": ${report.timestamp},
-                        "percent": ${report.percent},
-                        "currentFile": "${report.currentFile}",
-                        "jobId": ${report.jobId}
-                      }
-                    }
-                """.trimIndent()
-                sendMessage(json)
+                val report = Communicator.receiveReport()
+
+                val toJson = report.toJson()
+                sendMessage(Json.encodeToString(toJson))
             }
         }
     }

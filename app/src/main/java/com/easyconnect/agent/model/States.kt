@@ -1,44 +1,44 @@
 package com.easyconnect.agent.model
 
+import kotlinx.serialization.Serializable
+
 enum class DeploymentState
 {
     Download,
     Move,
     Install,
     Uninstall,
-    Complete
+    Complete,
+    Fail
 }
-enum class AgentStages
+enum class JobState
 {
-    Boot,
-    Connecting,
-    Retrying,
-    Connected,
-    Rebooting,
-    ShuttingDown
-}
-object AgentStagesManager
-{
-    var state: AgentStages = AgentStages.Boot
-}
-enum class MessageStatus
-{
-    Boot,
     Waiting,
-    Connected,
-    Downloading,
-    Moving,
-    Installing,
-    Uninstalling,
+    Executing,
     Complete,
     Cancel,
     Fail
 }
+enum class DeviceStatus
+{
+    Boot,
+    Waiting,
+    Online,
+    Offline
+}
 enum class MessageType
 {
     Register,
-    Download,
+    Deployment,
     Battery,
     Heartbeat,
+    StartExperience,
     Acknowledge
+}
+@Serializable
+enum class CommandType
+{
+    Deployment,
+    Websocket,
+    Activity
 }

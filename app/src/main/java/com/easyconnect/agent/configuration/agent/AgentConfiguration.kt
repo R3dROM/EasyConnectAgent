@@ -4,13 +4,9 @@ import com.easyconnect.agent.interfaces.IAgentConfigurationReader
 import com.easyconnect.agent.interfaces.IAgentConfigurationWriter
 
 object AgentConfiguration : IAgentConfigurationWriter, IAgentConfigurationReader{
-    const val START_DEPLOYMENT_SERVICE = "START_DEPLOYMENT_SERVICE"
-    const val STOP_DEPLOYMENT_SERVICE = "STOP_DEPLOYMENT_SERVICE"
-    const val START_EXPERIENCE = "START_EXPERIENCE"
-    const val START_PICO_CONFIGURATION = "START_PICO_CONFIGURATION"
-    const val TARGET_SERVICE = "TARGET_SERVICE"
     const val PACKAGE_NAME = "com.easyconnect.agent"
     const val WEBSOCKET_CLASS_NAME = "com.easyconnect.agent.service.WebSocketService"
+    const val EASY_AGENT_SERVICE_CLASS_NAME = "com.easyconnect.agent.service.EasyAgentService"
 
     override var ip : String = "NO IP"
         set(value) {

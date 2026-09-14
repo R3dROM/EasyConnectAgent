@@ -4,40 +4,13 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
 import com.easyconnect.agent.dependency.AgentDependencies
+import com.easyconnect.agent.model.AgentConfigurationJsonData
+import com.easyconnect.agent.model.PicoConfigurationJsonData
 import kotlinx.serialization.json.Json
 import java.io.File
 
 const val NETWORKING_FILE = "AgentConfiguration.json"
 const val PICO_FILE = "PicoConfiguration.json"
-@kotlinx.serialization.Serializable
-data class AgentConfigurationJsonData(
-    var ip : String = "NO IP",
-    var port: String = "5555",
-    var serverConnectionIp : String = "NO SERVER",
-    var serverPort : String = "7777",
-    var serialNumber: String = "XXX",
-    var deviceNumber: String = "NO NUMBER",
-)
-@kotlinx.serialization.Serializable
-data class PicoConfigurationJsonData (
-    val wifiSSID: String = "",
-    val wifiPassword: String = "",
-    val keepWifiOn: Boolean = false,
-    val wirelessDebug: Boolean = false,
-    val usbDebug: Boolean = false,
-
-    val homeGesture: Boolean = false,
-    val calibrateGesture: Boolean = false,
-    val handAndControllers: Boolean = false,
-
-    val modeLBE: Boolean = false,
-    val longHomePressButton: Boolean = false,
-    val temporaryPlayBoundary: Boolean = false,
-    val boundaryConfirmationPopup: Boolean = false,
-    val useMarkersFirstPositionRecovery: Boolean = false,
-    val distanceSensitivityPlayBoundary: Int = 0,
-    val colorFence: Triple<Int, Int, Int> = Triple(0,0,0)
-)
 object PersistentData  {
     private lateinit var agentConfigurationFile: File
     private  lateinit var picoConfigurationFile: File

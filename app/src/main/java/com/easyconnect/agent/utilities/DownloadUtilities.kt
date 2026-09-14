@@ -1,22 +1,15 @@
-package com.easyconnect.agent.deployment.download
+package com.easyconnect.agent.utilities
 
-import com.easyconnect.agent.model.MessageStatus
-import com.easyconnect.agent.interfaces.IDownloadFiles
+import com.easyconnect.agent.model.JobState
+import com.easyconnect.agent.network.report.Report
 import java.io.File
 import java.security.MessageDigest
-data class NetworkingConfiguration(
-    val serialNumber: String,
-    override val pathFile: String,
-    override val size: Long,
-    override val sha256: String,
-    val deviceId: String
-) : IDownloadFiles
 object DownloadReport {
     var apkSize: Long = 0L
         private set
     var apkName: String = "null"
         private set
-    var status: MessageStatus = MessageStatus.Waiting
+    var status: JobState = JobState.Waiting
         private set
     var bundle: String = "null"
         private set
@@ -29,11 +22,10 @@ object DownloadReport {
     var jobId: Long = 0
         private set
 
-    fun resetReport(size: Long, name: String, status: MessageStatus, bundle: String, time: Long, percent: Int, currentFile: String, jobId: Long)
+    fun resetReport(size: Long, name: String, bundle: String, time: Long, percent: Int, currentFile: String, jobId: Long)
     {
         apkSize = size
         apkName = name
-        DownloadReport.status = status
         DownloadReport.bundle = bundle
         timestamp = time
         DownloadReport.percent = percent
@@ -45,13 +37,12 @@ object DownloadReport {
         DownloadReport.percent = percent
         DownloadReport.currentFile = currentFile
     }
-    fun updateReport(status: MessageStatus)
+    fun updateReport(status: JobState)
     {
         DownloadReport.status = status
     }
     fun endReport(time: Long)
     {
-        status = MessageStatus.Complete
         timestamp = time
     }
 }

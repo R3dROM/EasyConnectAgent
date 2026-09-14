@@ -5,11 +5,16 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import com.easyconnect.agent.configuration.download.DownloadConfiguration
-import com.easyconnect.agent.data.queue.DownloadReportPublisher
+import com.easyconnect.agent.data.queue.Communicator
 import com.easyconnect.agent.interfaces.IDeployProcess
-import com.easyconnect.agent.model.MessageStatus
 import com.easyconnect.agent.data.PersistentData
 import com.easyconnect.agent.interfaces.IDownloadFiles
+import com.easyconnect.agent.model.JobState
+import com.easyconnect.agent.model.MessageType
+import com.easyconnect.agent.network.report.Report
+import com.easyconnect.agent.utilities.DownloadReport
+import com.easyconnect.agent.utilities.JsonBuilder
+import com.easyconnect.agent.utilities.sha256
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,17 +55,21 @@ class DownloadClass (
         maxRequestsPerHost = DownloadConfiguration.DOWNLOAD_WORKERS
     }
     private var sendReportJob: Job? = null
+    private var needToSend = false
     private val serviceScope =
         CoroutineScope(
             Dispatchers.IO + SupervisorJob()
         )
 
-    override suspend fun start(): Boolean {
+    init {
         if (client == null)
             createClient()
-        downloadExperience(url, jobId)
-
-        return true
+    }
+    override suspend fun start(): Boolean {
+        return withContext(Dispatchers.IO)
+        {
+            downloadExperience(url, jobId)
+        }
     }
     private fun createClient()
     {
@@ -102,11 +111,11 @@ class DownloadClass (
             )
             .build()
     }
-    private suspend fun downloadExperience(baseUrl: String?, jobId: Long) {
+    private suspend fun downloadExperience(baseUrl: String?, jobId: Long): Boolean {
         val manifestUrl = "$baseUrl/manifest.json"
-        client?.let {it ->
+        val result = client?.let {it ->
             val manifestRaw = downloadManifestRaw(it, manifestUrl)
-                ?: return
+                ?: return@let false
             val startTime = SystemClock.elapsedRealtime()
             var endTime : Long?
             val manifest = parseManifest(manifestRaw)
@@ -121,7 +130,6 @@ class DownloadClass (
                     DownloadReport.resetReport(
                         apk.size,
                         apkName,
-                        MessageStatus.Downloading,
                         bundle,
                         0L,
                         0,
@@ -130,18 +138,20 @@ class DownloadClass (
                     )
                 }
                 try {
-                    sendReport(DownloadReport)
+                    sendReport()
                     downloadHelper(files, outputDir, baseUrl)
                     Log.e("DEPLOY", "Descarga completa")
                 } catch (e: CancellationException) {
                     Log.e("DOWNLOAD_EXPERIENCE", "Cancellation Exception: $e")
-                    DownloadReport.updateReport(MessageStatus.Fail)
+                    DownloadReport.updateReport(JobState.Fail)
+                    throw e
                 }
                 endTime = SystemClock.elapsedRealtime()
                 DownloadReport.endReport(endTime - startTime)
+                return@let true
             }
-
-        }
+        } as Boolean
+        return result
     }
     private suspend fun downloadHelper(files: List<IDownloadFiles>, outputDir: File, baseUrl: String?)
     {
@@ -160,11 +170,11 @@ class DownloadClass (
                     else
                     {
                         finalFile.delete()
-                        DownloadReport.updateReport(MessageStatus.Fail)
+                        DownloadReport.updateReport(JobState.Fail)
                         Log.e("DEPLOY","${file.pathFile} está corrupto o ha cambiado, volviendo a descargar")
                     }
                 }
-                DownloadReport.updateReport(MessageStatus.Downloading)
+                DownloadReport.updateReport(JobState.Executing)
                 Log.e("DEPLOY", "Descargando ${file.pathFile}")
                 downloadFile(baseUrl, file, outputDir, file.size)
             }
@@ -216,6 +226,7 @@ class DownloadClass (
                             lastUpdate,
                             lock
                         ) { percent ->
+                            needToSend = true
                             DownloadReport.updateReport(percent, "(${outputFile.name}")
                         }
                     }
@@ -237,13 +248,31 @@ class DownloadClass (
         serviceScope.cancel()
     }
 
-    override suspend fun sendReport(report: DownloadReport) {
+    override suspend fun sendReport() {
+        sendReportJob?.cancel()
         sendReportJob = serviceScope.launch {
             while (isActive)
             {
-                DownloadReportPublisher.publish(report)
-                if (report.timestamp > 0)
-                    break
+                if (!needToSend)
+                    continue
+                val payload = JsonBuilder.putExtras(
+                    JsonBuilder.extra("id", PersistentData.agentConfigurationReader.ip),
+                    JsonBuilder.extra("serialNumber", PersistentData.agentConfigurationReader.serialNumber),
+                    JsonBuilder.extra("status", DownloadReport.status),
+                    JsonBuilder.extra("bundle", DownloadReport.bundle),
+                    JsonBuilder.extra("apkName", DownloadReport.apkName),
+                    JsonBuilder.extra("apkSize", DownloadReport.apkSize),
+                    JsonBuilder.extra("timestamp", DownloadReport.timestamp),
+                    JsonBuilder.extra("percent", DownloadReport.percent),
+                    JsonBuilder.extra("currentFile", DownloadReport.currentFile),
+                    JsonBuilder.extra("jobId", DownloadReport.jobId),
+                )
+                val report = Report(
+                    id = PersistentData.agentConfigurationReader.serialNumber,
+                    type = MessageType.Deployment,
+                    payload = payload
+                )
+                Communicator.publishReport(report)
                 delay(1000.milliseconds)
             }
         }

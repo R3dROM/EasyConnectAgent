@@ -5,14 +5,19 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.easyconnect.agent.configuration.network.NetworkConfiguration
+import com.easyconnect.agent.configuration.ActivityConfiguration
+import com.easyconnect.agent.configuration.agent.AgentConfiguration
 import com.easyconnect.agent.dependency.AgentDependencies
+import com.easyconnect.agent.interfaces.IInterpreter
 import com.easyconnect.agent.interfaces.IWebSocket
+import com.easyconnect.agent.network.interpreter.Interpreter
 
 class WebSocketService : Service()
 {
     var webSocketClass: IWebSocket ?= null
+    var interpreter: IInterpreter = Interpreter
 
     override fun onCreate() {
         val notification = createNotification()
@@ -21,20 +26,22 @@ class WebSocketService : Service()
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int
     {
+        Log.i("WEBSOCKET", "Intent receive: $intent")
+        val bundle = intent?.getBundleExtra(ActivityConfiguration.EXTRAS)
         val websocketUrl =
-            intent?.getStringExtra(NetworkConfiguration.WEBSOCKET_URL)
+            bundle?.getString(ActivityConfiguration.URL)
         val webSocketPort =
-            intent?.getStringExtra(NetworkConfiguration.WEBSOCKET_PORT)
+            bundle?.getString(ActivityConfiguration.PORT)
         val registerJobId =
-            intent?.getLongExtra(NetworkConfiguration.REGISTER_JOB_ID, 0)
+            bundle?.getLong(ActivityConfiguration.JOB_ID, 0)
         val stopWebSocket =
-            intent?.getBooleanExtra(NetworkConfiguration.WEBSOCKET_STOP, false) ?: false
+            bundle?.getBoolean(ActivityConfiguration.CANCELLATION, false) ?: false
 
         if (stopWebSocket)
         {
             webSocketClass?.disconnect()
             stopSelf()
-            return START_STICKY
+            return START_NOT_STICKY
         }
         if (websocketUrl != null)
         {
@@ -44,6 +51,7 @@ class WebSocketService : Service()
                 webSocketClass = AgentDependencies.createWebSocketClass(
                     url = pendingUrl,
                     jobId = registerJobId ?: 0,
+                    interpreter,
                     appContext = this
                 )
             }
@@ -53,7 +61,7 @@ class WebSocketService : Service()
                 }
             }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
     override fun onDestroy() {
         webSocketClass?.disconnect()

@@ -8,10 +8,12 @@ import com.easyconnect.agent.deployment.install.InstallApk
 import com.easyconnect.agent.deployment.movefiles.MoveFilesClass
 import com.easyconnect.agent.interfaces.IAgentConfigurationReader
 import com.easyconnect.agent.interfaces.IAgentConfigurationWriter
+import com.easyconnect.agent.interfaces.IInterpreter
 import com.easyconnect.agent.interfaces.IPicoConfigurationReader
 import com.easyconnect.agent.interfaces.IPicoConfigurationWriter
 import com.easyconnect.agent.network.AsyncUdpClient
-import com.easyconnect.agent.network.websocket.Communicator
+import com.easyconnect.agent.network.interpreter.Interpreter
+import com.easyconnect.agent.network.websocket.WebSocketClass
 import com.flyfishxu.kadb.Kadb
 
 object AgentDependencies {
@@ -28,12 +30,10 @@ object AgentDependencies {
         )
     }
     fun createInstallClass(
-        appContext: Context,
         adbClient: Kadb?
     ) : InstallApk
     {
         return InstallApk(
-            appContext,
             adbClient
         )
     }
@@ -50,11 +50,13 @@ object AgentDependencies {
     fun createWebSocketClass(
         url: String,
         jobId: Long,
+        interpreter: IInterpreter,
         appContext: Context
-    ): Communicator {
-        return Communicator(
+    ): WebSocketClass {
+        return WebSocketClass(
             url,
             jobId,
+            interpreter,
             appContext
         )
     }
