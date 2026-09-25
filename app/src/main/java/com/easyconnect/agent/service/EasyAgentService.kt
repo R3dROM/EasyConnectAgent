@@ -34,9 +34,6 @@ class EasyAgentService : Service()
         val notification = createNotification()
         startForeground(1, notification)
         easyAgentClass = EasyAgentClass(this)
-        agentJob = serviceScope.launch {
-            val result = easyAgentClass?.bootAgent()
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -53,18 +50,43 @@ class EasyAgentService : Service()
         }
         val jobId = intent?.getLongExtra(ActivityConfiguration.JOB_ID, -1) ?: -1
         val extras = intent?.getBundleExtra(ActivityConfiguration.EXTRAS)
-        Log.i("INTENT", "receive: $command")
+        val options = intent?.getBundleExtra(ActivityConfiguration.OPTIONS)
+        val cancellation = extras?.getBoolean(
+            ActivityConfiguration.CANCELLATION,
+            false
+        ) ?: false
+        Log.i("INTENT", "receive: $options & $extras" )
         when
         {
-            command == CommandType.Deployment -> {
+            command == CommandType.Cancellation -> {
+                if (cancellation) {
+                    Log.i("DEPLOYMENT SERVICE", "Cancelling deployment")
+
+                    deploymentJob?.cancel()
+                    easyAgentClass?.shutDown()
+
+                    deploymentJob = null
+
+                    return START_STICKY
+                }
                 deploymentJob = serviceScope.launch {
-                    easyAgentClass?.startDeploymentService(jobId, extras)
+                    val result = easyAgentClass?.startDeploymentService(jobId, extras, options)
+                    if (result == false)
+                      deploymentJob?.cancel()
+                    Log.i("DEPLOYMENT SERVICE", "DEPLOYMENT: $result")
                 }
             }
-            command ==  CommandType.Activity ->
-            {
+            command == CommandType.Deployment -> {
+                deploymentJob = serviceScope.launch {
+                    val result = easyAgentClass?.startDeploymentService(jobId, extras, options)
+                    if (result == false)
+                        deploymentJob?.cancel()
+                    Log.i("DEPLOYMENT SERVICE", "DEPLOYMENT: $result")
+                }
+            }
+            command ==  CommandType.Activity -> {
                 experienceJob = serviceScope.launch {
-                    easyAgentClass?.startExperience(jobId,command,extras)
+                    easyAgentClass?.startActivityManager(jobId,extras, options)
                 }
             }
         }

@@ -12,7 +12,7 @@ class PicoInformation(
     private val lbeCallback = object : IStringCallback.Stub()
     {
         override fun callback(p0: String?) {
-            Log.i("PICOBinder", "Callback: $p0")
+            Log.i("PICOBinder", "Callback LBE Mode: $p0")
         }
     }
 

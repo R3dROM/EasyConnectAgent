@@ -22,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -113,45 +114,42 @@ class DownloadClass (
     }
     private suspend fun downloadExperience(baseUrl: String?, jobId: Long): Boolean {
         val manifestUrl = "$baseUrl/manifest.json"
-        val result = client?.let {it ->
-            val manifestRaw = downloadManifestRaw(it, manifestUrl)
-                ?: return@let false
-            val startTime = SystemClock.elapsedRealtime()
-            var endTime : Long?
-            val manifest = parseManifest(manifestRaw)
-            manifest?.let {
-                val files = manifest.first
-                val bundle = manifest.second
-                val outputDir = File(context.getExternalFilesDir(null), bundle)
-                val apk = files.firstOrNull{it.pathFile.endsWith(".apk")}
-                if (apk != null)
-                {
-                    val apkName = apk.pathFile.substringAfter("/")
-                    DownloadReport.resetReport(
-                        apk.size,
-                        apkName,
-                        bundle,
-                        0L,
-                        0,
-                        "null",
-                        jobId
-                    )
-                }
-                try {
-                    sendReport()
-                    downloadHelper(files, outputDir, baseUrl)
-                    Log.e("DEPLOY", "Descarga completa")
-                } catch (e: CancellationException) {
-                    Log.e("DOWNLOAD_EXPERIENCE", "Cancellation Exception: $e")
-                    DownloadReport.updateReport(JobState.Fail)
-                    throw e
-                }
-                endTime = SystemClock.elapsedRealtime()
-                DownloadReport.endReport(endTime - startTime)
-                return@let true
-            }
-        } as Boolean
-        return result
+        val client = client ?: return false
+
+        val manifestRaw = downloadManifestRaw(client, manifestUrl)
+            ?: return false
+        val startTime = SystemClock.elapsedRealtime()
+        var endTime: Long?
+        val manifest = parseManifest(manifestRaw)
+            ?: return false
+        val files = manifest.first
+        val bundle = manifest.second
+        val outputDir = File(context.getExternalFilesDir(null), bundle)
+        val apk = files.firstOrNull { it.pathFile.endsWith(".apk") }
+        if (apk != null) {
+            val apkName = apk.pathFile.substringAfter("/")
+            DownloadReport.resetReport(
+                apk.size,
+                apkName,
+                bundle,
+                0L,
+                0,
+                "null",
+                jobId
+            )
+        }
+        try {
+            sendReport()
+            downloadHelper(files, outputDir, baseUrl)
+            Log.e("DEPLOY", "Descarga completa")
+        } catch (e: CancellationException) {
+            Log.e("DOWNLOAD_EXPERIENCE", "Cancellation Exception: $e")
+            DownloadReport.updateReport(JobState.Fail)
+            throw e
+        }
+        endTime = SystemClock.elapsedRealtime()
+        DownloadReport.endReport(endTime - startTime)
+        return true
     }
     private suspend fun downloadHelper(files: List<IDownloadFiles>, outputDir: File, baseUrl: String?)
     {
@@ -210,42 +208,42 @@ class DownloadClass (
             RandomAccessFile(outputFile, "rw").use { raf ->
                 raf.setLength(size)
                 val channel = raf.channel
+                coroutineScope {
+                    val jobs = List(DownloadConfiguration.DOWNLOAD_WORKERS) {
 
-                val jobs = List(DownloadConfiguration.DOWNLOAD_WORKERS) {
-
-                    async(Dispatchers.IO) {
-                        downloadWorker(
-                            client!!,
-                            queue,
-                            queueLock,
-                            "${baseUrl}/${file.pathFile}",
-                            channel,
-                            file,
-                            downloadedBytes,
-                            size,
-                            lastUpdate,
-                            lock
-                        ) { percent ->
-                            needToSend = true
-                            DownloadReport.updateReport(percent, "(${outputFile.name}")
+                        async(Dispatchers.IO) {
+                            downloadWorker(
+                                client!!,
+                                queue,
+                                queueLock,
+                                "${baseUrl}/${file.pathFile}",
+                                channel,
+                                file,
+                                downloadedBytes,
+                                size,
+                                lastUpdate,
+                                lock
+                            ) { percent ->
+                                needToSend = true
+                                DownloadReport.updateReport(percent, "${outputFile.name}")
+                            }
                         }
                     }
-                }
 
-                jobs.awaitAll()
-                raf.channel.force(true)
-                outputFile.setReadable(true, false)
-                outputFile.setWritable(true, false)
-                outputFile.setExecutable(true, false)
+                    jobs.awaitAll()
+                    raf.channel.force(true)
+                    outputFile.setReadable(true, false)
+                    outputFile.setWritable(true, false)
+                    outputFile.setExecutable(true, false)
+                }
             }
-            DownloadReport.updateReport(100, "(${outputFile.name}")
+            DownloadReport.updateReport(100, "${outputFile.name}")
         }
     }
     override fun shutdown() {
+        sendReportJob?.cancel()
         dispatcher.cancelAll()
         client?.dispatcher?.cancelAll()
-        sendReportJob?.cancel()
-        serviceScope.cancel()
     }
 
     override suspend fun sendReport() {

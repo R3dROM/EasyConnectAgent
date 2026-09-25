@@ -53,16 +53,16 @@ suspend fun downloadChunk(
     while (!success && retries > 0)
     {
         coroutineContext.ensureActive()
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Range", "bytes=${chunk.start}-${chunk.end}")
+            .build()
+        Log.d("DOWNLOAD", "Solicitando ${chunk.start}-${chunk.end}")
+        val call = client.newCall(request)
+        val cancellationHandle = coroutineContext.job.invokeOnCompletion {
+            call.cancel()
+        }
         try {
-            val request = Request.Builder()
-                .url(url)
-                .addHeader("Range", "bytes=${chunk.start}-${chunk.end}")
-                .build()
-            Log.d("DOWNLOAD", "Solicitando ${chunk.start}-${chunk.end}")
-            val call = client.newCall(request)
-            coroutineContext.job.invokeOnCompletion {
-                call.cancel()
-            }
             call.execute().use { response ->
                 Log.d("DOWNLOAD", "Respuesta recibida ${response.code}")
                 response.isSuccessful.let {
@@ -114,6 +114,9 @@ suspend fun downloadChunk(
             Log.e("DOWNLOAD", "Chunk download failed", e)
             retries--
             if (retries == 0) throw e
+        }
+        finally {
+            cancellationHandle.dispose()
         }
     }
 }

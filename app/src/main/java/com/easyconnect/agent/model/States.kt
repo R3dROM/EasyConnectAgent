@@ -2,6 +2,12 @@ package com.easyconnect.agent.model
 
 import kotlinx.serialization.Serializable
 
+enum class ActivityType
+{
+    StartExperience,
+    UninstallExperience,
+    StartUpdate
+}
 enum class DeploymentState
 {
     Download,
@@ -9,6 +15,7 @@ enum class DeploymentState
     Install,
     Uninstall,
     Complete,
+    Cancel,
     Fail
 }
 enum class JobState
@@ -24,7 +31,8 @@ enum class DeviceStatus
     Boot,
     Waiting,
     Online,
-    Offline
+    Offline,
+    Updating
 }
 enum class MessageType
 {
@@ -32,13 +40,14 @@ enum class MessageType
     Deployment,
     Battery,
     Heartbeat,
-    StartExperience,
-    Acknowledge
+    Acknowledge,
+    Update
 }
 @Serializable
 enum class CommandType
 {
     Deployment,
-    Websocket,
-    Activity
+    Connection,
+    Activity,
+    Cancellation
 }

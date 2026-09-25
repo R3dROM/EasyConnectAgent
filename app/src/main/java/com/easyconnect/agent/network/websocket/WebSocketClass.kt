@@ -10,6 +10,7 @@ import com.easyconnect.agent.model.MessageType
 import com.easyconnect.agent.data.PersistentData
 import com.easyconnect.agent.interfaces.IInterpreter
 import com.easyconnect.agent.interfaces.IWebSocket
+import com.easyconnect.agent.network.connectionManager.ConnectionManager
 import com.easyconnect.agent.network.report.Report
 import com.easyconnect.agent.utilities.JsonBuilder
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +20,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
@@ -45,18 +47,18 @@ class WebSocketClass(
 {
     private var client: OkHttpClient ?= null
     private var socket : WebSocket? = null
-    private var isConnected = false
     private var serviceScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO)
 
     private var socketListener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             Log.i("WEB_SOCKET", "CONNECTED SUCCESSFUL")
-            isConnected = true
-            startConnectionMessage()
             sendReport()
-            startHeartbeat()
-            startBattery()
+            serviceScope.launch {
+                startConnectionMessage()
+                startHeartbeat()
+                startBattery()
+            }
             flushQueue()
         }
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -67,14 +69,13 @@ class WebSocketClass(
             Log.i("WEB_SOCKET","📦 Mensaje binario recibido")
         }
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            isConnected = false
+            ConnectionManager.setConnected(false)
             disconnect()
             Log.i("WEB_SOCKET","🔌 Cerrando conexión")
         }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            isConnected = false
-            Log.i("WEB_SOCKET","❌ Error: ${t.message}")
-            retryConnection()
+            ConnectionManager.setConnected(false)
+            Log.i("WEB_SOCKET","❌ Error: ${t.message} response: $response")
         }
     }
     private var heartBeatJob: Job? = null
@@ -115,6 +116,7 @@ class WebSocketClass(
             socket = client?.newWebSocket(request, socketListener)
             socket?.let {
                 Log.i("WEB_SCOKET","Socket Connected")
+                ConnectionManager.setConnected(true)
                 return true
             }
         } catch (e: SocketTimeoutException) {
@@ -136,24 +138,21 @@ class WebSocketClass(
     override fun disconnect() {
         socket?.close(1000, "Cierre normal")
         socket = null
-        isConnected = false
+        ConnectionManager.setConnected(false)
         connectionRetries = 3
         reportInformationJob?.cancel()
         heartBeatJob?.cancel()
         batteryJob?.cancel()
         Log.i("WEB_SOCKET", "Socket Disconnected")
     }
-
     override fun isConnected(): Boolean =
-        isConnected
-
+        ConnectionManager.isConnected.value
     override fun retryConnection() {
         if (--connectionRetries <= 0)
             disconnect()
         else
             startWebSocketClient()
     }
-
     override fun flushQueue()
     {
         while (messageQueue.isNotEmpty())
@@ -165,35 +164,32 @@ class WebSocketClass(
         }
     }
     override fun sendMessage(message: String) {
-        if (!isConnected)
+        if (!isConnected())
             messageQueue.add(message)
         else
             socket?.send(message)
     }
-
-    private fun startConnectionMessage()
+    private suspend fun startConnectionMessage()
     {
-        serviceScope.launch {
-            val payload = JsonBuilder.putExtras(
-                JsonBuilder.extra("ip", PersistentData.agentConfigurationReader.ip),
-                JsonBuilder.extra("serialNumber", PersistentData.agentConfigurationReader.serialNumber),
-                JsonBuilder.extra("deviceNumber", PersistentData.agentConfigurationReader.deviceNumber),
-                JsonBuilder.extra("status", DeviceStatus.Online)
-            )
-            val report = Report(
-                id = PersistentData.agentConfigurationReader.serialNumber,
-                type = MessageType.Register,
-                payload = payload
-            )
-            Communicator.publishReport(report)
-        }
+        val payload = JsonBuilder.putExtras(
+            JsonBuilder.extra("ip", PersistentData.agentConfigurationReader.ip),
+            JsonBuilder.extra("serialNumber", PersistentData.agentConfigurationReader.serialNumber),
+            JsonBuilder.extra("deviceNumber", PersistentData.agentConfigurationReader.deviceNumber.toInt()),
+            JsonBuilder.extra("puiVersion", PersistentData.picoConfigurationReader.puiVersion),
+            JsonBuilder.extra("status", DeviceStatus.Online)
+        )
+        val report = Report(
+            id = PersistentData.agentConfigurationReader.serialNumber,
+            type = MessageType.Register,
+            payload = payload
+        )
+        Communicator.publishReport(report)
     }
-    @OptIn(ExperimentalTime::class)
-    fun startHeartbeat() {
+    private fun startHeartbeat() {
         heartBeatJob?.cancel()
 
         heartBeatJob = serviceScope.launch(Dispatchers.IO) {
-            while (isActive && isConnected) {
+            while (isActive && isConnected()) {
                 val time = Clock.System.now()
 
                 val payload = JsonBuilder.putExtras(
@@ -210,13 +206,13 @@ class WebSocketClass(
             }
         }
     }
-    private fun startBattery() {
+    private  fun startBattery() {
         batteryJob?.cancel()
         val batteryManager =
             context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
 
         batteryJob = serviceScope.launch(Dispatchers.IO) {
-            while (isActive && isConnected)
+            while (isActive && isConnected())
             {
                 val level = batteryManager.getIntProperty(
                     BatteryManager.BATTERY_PROPERTY_CAPACITY
@@ -242,7 +238,7 @@ class WebSocketClass(
 
         reportInformationJob = serviceScope.launch(Dispatchers.IO)
         {
-            while (isActive)
+            while (isActive && isConnected())
             {
                 val report = Communicator.receiveReport()
 

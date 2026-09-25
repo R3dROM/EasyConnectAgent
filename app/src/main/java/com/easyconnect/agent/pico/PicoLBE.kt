@@ -2,12 +2,15 @@ package com.easyconnect.agent.pico
 
 import android.annotation.SuppressLint
 import android.util.Log
+import androidx.core.util.Consumer
 import com.easyconnect.agent.interfaces.IPicoLBE
 import com.pvr.tobservice.enums.PBS_SwitchEnum
 import com.pvr.tobservice.enums.PBS_SystemFunctionSwitchEnum
 import com.pvr.tobservice.interfaces.IBoolCallback
 import com.pvr.tobservice.interfaces.IIntCallback
 import com.pvr.tobservice.interfaces.IToBServiceProxy
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class PicoLBE(
     private val service : IToBServiceProxy
@@ -17,7 +20,7 @@ class PicoLBE(
         override fun callback(p0: Int) {
             Log.i(
                 "PICOBinder",
-                "Callback: $p0"
+                "Callback import Map int: $p0"
             )
         }
     }
@@ -26,7 +29,7 @@ class PicoLBE(
         override fun callBack(p0: Boolean) {
             Log.i(
                 "PICOBinder",
-                "Callback: $p0"
+                "Callback import Map boolean: $p0"
             )
         }
     }
@@ -90,43 +93,97 @@ class PicoLBE(
             lbeEnableCallback,
             enable,
             0)
-    override fun setHandTracking(enable: Boolean) =
+    override suspend fun setHandTracking(enable: Boolean): Boolean =
+        suspendCancellableCoroutine { continuation ->
+            service.pbsSwitchSystemFunction(
+                PBS_SystemFunctionSwitchEnum.SFS_GESTURE_RECOGNITION.index,
+                when(enable)
+                {
+                    true -> PBS_SwitchEnum.S_ON.index
+                    else -> PBS_SwitchEnum.S_OFF.index
+                },
+                {
+                        result ->
+
+                    Log.i(
+                        "PICO HAND",
+                        "Hand interaction result: $result"
+                    )
+
+                    when (result) {
+                        0 -> continuation.resume(true)
+                        1, 2 -> continuation.resume(false)
+                        else -> continuation.resume(false)
+                    }
+                },
+                0
+            )
+        }
+
+    override suspend fun setMixedInteraction(enable: Boolean): Boolean =
+        suspendCancellableCoroutine { continuation ->
+            service.pbsSwitchSystemFunction(
+                PBS_SystemFunctionSwitchEnum.SFS_MIXED_INTERACTION_MODE.index,
+                when(enable)
+                {
+                    true -> PBS_SwitchEnum.S_ON.index
+                    else -> PBS_SwitchEnum.S_OFF.index
+                },{
+                        result ->
+
+                    Log.i(
+                        "PICO HAND",
+                        "Mixed interaction result: $result"
+                    )
+
+                    when (result) {
+                        0 -> continuation.resume(true)
+                        1, 2 -> continuation.resume(false)
+                        else -> continuation.resume(false)
+                    }
+                },
+                0
+            )
+        }
+    override suspend fun setHandAndController(enable: Boolean): Boolean =
+        suspendCancellableCoroutine { continuation ->
+            service.pbsSwitchSystemFunction(
+                PBS_SystemFunctionSwitchEnum.SFS_HEAD_HAND_INTERACTION.index,
+                when(enable)
+                {
+                    true -> PBS_SwitchEnum.S_ON.index
+                    else -> PBS_SwitchEnum.S_OFF.index
+                },
+                {
+                        result ->
+
+                    Log.i(
+                        "PICO HAND",
+                        "head and Hand interaction result: $result"
+                    )
+
+                    when (result) {
+                        0 -> continuation.resume(true)
+                        1, 2 -> continuation.resume(false)
+                        else -> continuation.resume(false)
+                    }
+                },
+                0
+            )
+        }
+
+    override fun disableHomeGesture() {
+//        service.pbsSwitchSystemFunction(
+//            PBS_SystemFunctionSwitchEnum.SFS_SYSTEM_HOME_GESTURE_DISABLE,
+//            PBS_SwitchEnum.S_ON,
+//            0
+//        )
         service.pbsSwitchSystemFunction(
-            PBS_SystemFunctionSwitchEnum.SFS_GESTURE_RECOGNITION,
-            when(enable)
-            {
-                true -> PBS_SwitchEnum.S_ON
-                else -> PBS_SwitchEnum.S_OFF
-            },
-            0
-        )
-    override fun setHandAndController(enable: Boolean)
-    {
-        service.pbsSwitchSystemFunction(
-            PBS_SystemFunctionSwitchEnum.SFS_MIXED_INTERACTION_MODE,
-            when(enable)
-            {
-                true -> PBS_SwitchEnum.S_ON
-                else -> PBS_SwitchEnum.S_OFF
-            },
-            0
-        )
-        service.pbsSwitchSystemFunction(
-            PBS_SystemFunctionSwitchEnum.SFS_HEAD_HAND_INTERACTION,
-            when(enable)
-            {
-                true -> PBS_SwitchEnum.S_ON
-                else -> PBS_SwitchEnum.S_OFF
-            },
+            PBS_SystemFunctionSwitchEnum.SFS_GESTURE_RECOGNITION_HOME_ENABLE,
+            PBS_SwitchEnum.S_OFF,
             0
         )
     }
-    override fun disableHomeGesture() =
-        service.pbsSwitchSystemFunction(
-            PBS_SystemFunctionSwitchEnum.SFS_SYSTEM_HOME_GESTURE_DISABLE,
-            PBS_SwitchEnum.S_ON,
-            0
-        )
     override fun disableLongHomePress() =
         service.pbsSwitchSystemFunction(
             PBS_SystemFunctionSwitchEnum.SFS_LONG_PRESS_HOME_TO_RECENTER,

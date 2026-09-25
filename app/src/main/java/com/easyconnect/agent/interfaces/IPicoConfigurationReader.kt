@@ -1,6 +1,7 @@
 package com.easyconnect.agent.interfaces
 
 interface IPicoConfigurationReader {
+    val puiVersion: String
     val wifiSSID: String
     val wifiPassword: String
     val keepWifiOn: Boolean

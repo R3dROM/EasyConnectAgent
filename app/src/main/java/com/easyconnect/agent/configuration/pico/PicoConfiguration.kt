@@ -4,6 +4,14 @@ import com.easyconnect.agent.interfaces.IPicoConfigurationReader
 import com.easyconnect.agent.interfaces.IPicoConfigurationWriter
 
 object PicoConfiguration : IPicoConfigurationWriter, IPicoConfigurationReader {
+    override var puiVersion: String = ""
+        private set(value)
+        {
+            if (field != value)
+            {
+                field = value
+            }
+        }
     override var wifiSSID: String = ""
         private set(value)
         {
@@ -136,14 +144,12 @@ object PicoConfiguration : IPicoConfigurationWriter, IPicoConfigurationReader {
             }
         }
     override var needBoot = false
-//        get()
-//        {
-//            val swap = field
-//            needBoot = false
-//            return swap
-//        }
+
 
     override var configChange = false
+    override fun updatePuiVersion(puiVersion: String?) {
+        puiVersion?.let { this.puiVersion = puiVersion}
+    }
     override fun updateClientData(
         wifiSSID: String?,
         wifiPassword: String?,

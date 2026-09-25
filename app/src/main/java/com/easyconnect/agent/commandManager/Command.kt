@@ -8,5 +8,6 @@ import kotlinx.serialization.json.JsonObject
 data class Command(
     var id: Long,
     var commandType: CommandType,
-    var extras: JsonObject
+    var extras: JsonObject ?= null,
+    var options: JsonObject ?= null,
 )

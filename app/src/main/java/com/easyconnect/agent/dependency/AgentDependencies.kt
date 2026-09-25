@@ -11,8 +11,6 @@ import com.easyconnect.agent.interfaces.IAgentConfigurationWriter
 import com.easyconnect.agent.interfaces.IInterpreter
 import com.easyconnect.agent.interfaces.IPicoConfigurationReader
 import com.easyconnect.agent.interfaces.IPicoConfigurationWriter
-import com.easyconnect.agent.network.AsyncUdpClient
-import com.easyconnect.agent.network.interpreter.Interpreter
 import com.easyconnect.agent.network.websocket.WebSocketClass
 import com.flyfishxu.kadb.Kadb
 
@@ -61,7 +59,6 @@ object AgentDependencies {
         )
     }
 
-    fun createAsyncUdpClass() = AsyncUdpClient()
     fun getAgentConfigurationWriter() : IAgentConfigurationWriter = AgentConfiguration
     fun getAgentConfigurationReader() : IAgentConfigurationReader = AgentConfiguration
     fun getPicoConfigurationWriter() : IPicoConfigurationWriter = PicoConfiguration

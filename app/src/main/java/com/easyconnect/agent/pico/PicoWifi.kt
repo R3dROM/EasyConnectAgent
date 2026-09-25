@@ -6,6 +6,8 @@ import com.pvr.tobservice.enums.PBS_SwitchEnum
 import com.pvr.tobservice.enums.PBS_SystemFunctionSwitchEnum
 import com.pvr.tobservice.interfaces.IBoolCallback
 import com.pvr.tobservice.interfaces.IToBServiceProxy
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class PicoWifi(
     private val service : IToBServiceProxy
@@ -15,7 +17,7 @@ class PicoWifi(
         override fun callBack(p0: Boolean) {
             Log.i(
                 "PICOBinder",
-                "Callback: $p0"
+                "Callback WIFI: $p0"
             )
         }
     }
@@ -26,15 +28,28 @@ class PicoWifi(
             pwd,
             0,
             booleanCallback)
-    override fun setKeepWifi(enable: Boolean) =
-        run {
+    override suspend fun setKeepWifi(enable: Boolean) =
+        suspendCancellableCoroutine { continuation ->
             service.pbsSwitchSystemFunction(
-                PBS_SystemFunctionSwitchEnum.SFS_POWER_CTRL_WIFI_ENABLE,
+                PBS_SystemFunctionSwitchEnum.SFS_POWER_CTRL_WIFI_ENABLE.index,
                 when(enable)
                 {
-                    true -> PBS_SwitchEnum.S_ON
-                    else -> PBS_SwitchEnum.S_OFF
-                } as PBS_SwitchEnum?,
+                    true -> PBS_SwitchEnum.S_ON.index
+                    else -> PBS_SwitchEnum.S_OFF.index
+                },
+                { result ->
+
+                    Log.i(
+                        "PICO WIFI",
+                        "Keep Wifi On result: $result"
+                    )
+
+                    when (result) {
+                        0 -> continuation.resume(true)
+                        1, 2 -> continuation.resume(false)
+                        else -> continuation.resume(false)
+                    }
+                },
                 0
             )
         }
