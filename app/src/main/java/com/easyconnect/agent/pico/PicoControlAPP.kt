@@ -1,17 +1,27 @@
 package com.easyconnect.agent.pico
 
+import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Environment
+import android.os.IBinder
 import android.util.Log
 import com.easyconnect.agent.admin.EasyDeviceAdminReceiver
 import com.easyconnect.agent.core.EasyAgentClass
+import com.easyconnect.agent.data.queue.Communicator
 import com.easyconnect.agent.interfaces.IPicoControlAPP
+import com.easyconnect.agent.model.MessageType
+import com.easyconnect.agent.network.interpreter.Interpreter
+import com.easyconnect.agent.network.report.Report
+import com.easyconnect.agent.utilities.JsonBuilder
 import com.pvr.tobservice.ToBServiceHelper
 import com.pvr.tobservice.enums.PBS_PackageControlEnum
 import com.pvr.tobservice.interfaces.IIntCallback
+import com.pvr.tobservice.interfaces.ISystemUpdateCallback
 import com.pvr.tobservice.interfaces.IToBService
 import com.pvr.tobservice.interfaces.IToBServiceProxy
+import com.pvr.tobservice.model.OffLineSystemUpdateConfig
 import com.pvr.tobservice.model.SystemPermission
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.function.Consumer
@@ -28,17 +38,6 @@ class PicoControlAPP(
             Log.d("CONTROL_APP", "Control app: $p0")
         }
     }
-    private val grantPermissionsCallback = Consumer<Int> { t ->
-        when (t) {
-            0 -> Log.e("PICO_PERMISSION", "Storage permission granted")
-            1 -> Log.e("PICO_PERMISSION", "Failed to grant storage permission")
-            2 -> Log.e("PICO_PERMISSION", "Permission verification failed")
-            else -> Log.e(
-                "PICO_PERMISSION",
-                "Unknown result: $t"
-            )
-        }
-    }
     override fun silentInstall(path: String) =
         service.pbsControlAPPManger(
             PBS_PackageControlEnum.PACKAGE_SILENCE_INSTALL,
@@ -46,30 +45,23 @@ class PicoControlAPP(
             0,
             controlAPPCallback
         )
-    override fun silentUninstall(packageName: String) =
-        service.pbsControlAPPManger(
-            PBS_PackageControlEnum.PACKAGE_SILENCE_UNINSTALL,
-            packageName,
-            0,
-            controlAPPCallback
-        )
+    override suspend fun silentUninstall(packageName: String) =
+        suspendCancellableCoroutine { continuation ->
+            service.pbsControlAPPManger(
+                PBS_PackageControlEnum.PACKAGE_SILENCE_UNINSTALL,
+                packageName,
+                0,
+                object : IIntCallback.Stub()
+                {
+                    override fun callback(p0: Int) {
+                        Log.d("CONTROL_APP", "Control app: $p0")
+                        continuation.resume(p0)
+                    }
+                }
+            )
+        }
 
     override suspend fun grantPermissions() {
-//        service.pbsRequestSystemPermissionAsync(
-//            SystemPermission.SYS_OPS_PERMISSION_INSTALL_APKS,
-//            true,
-//            grantPermissionsCallback
-//        )
-//        service.pbsRequestSystemPermissionAsync(
-//            SystemPermission.SYS_RUNTIME_PERMISSION_STORAGE,
-//            true,
-//            grantPermissionsCallback
-//        )
-//        service.pbsRequestSystemPermissionAsync(
-//            SystemPermission.SYS_OPS_PERMISSION_WRITE_SETTINGS,
-//            true,
-//            grantPermissionsCallback
-//        )
     }
     override suspend fun requestManageStorage(): Boolean =
         suspendCancellableCoroutine { continuation ->
@@ -111,4 +103,26 @@ class PicoControlAPP(
 
         return result == 0
     }
+    @SuppressLint("SdCardPath")
+    override suspend fun offlineUpdate(): Int =
+        suspendCancellableCoroutine { continuation ->
+            val offlineOptions = OffLineSystemUpdateConfig()
+            offlineOptions.otaFilePath = "/sdcard/updates/5.15.7-202608080609-RELEASE-user-sparrow-b9111-b2059d5f17.zip"
+            offlineOptions.autoReboot = true
+            proxy.offlineSystemUpdate(
+                offlineOptions,
+                object : ISystemUpdateCallback.Stub() {
+                    override fun onUpdateStatusChanged(p0: Int, p1: Float) {
+                        Log.i("UPDATE","Percent: $p1")
+
+                        if (continuation.isActive)
+                            continuation.resume((p1*100).toInt())
+                    }
+
+                    override fun onUpdateComplete(p0: Int, p1: String?) {
+                        Log.i("UPDATE","Updtae complete, rebooting")
+                    }
+                }
+            )
+        }
 }

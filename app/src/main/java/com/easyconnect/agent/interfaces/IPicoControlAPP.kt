@@ -4,8 +4,9 @@ import com.pvr.tobservice.enums.PBS_PackageControlEnum
 
 interface IPicoControlAPP {
     fun silentInstall(path: String)
-    fun silentUninstall(packageName: String)
+    suspend fun silentUninstall(packageName: String): Int
     suspend fun grantPermissions()
     suspend fun requestManageStorage() : Boolean
     fun setDeviceOwner(): Boolean
+    suspend fun offlineUpdate(): Int
 }

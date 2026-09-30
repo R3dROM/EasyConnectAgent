@@ -17,7 +17,7 @@ class PicoActivity(
     ) : Int =
         service.pbsStartActivity(
             packageName,
-            "com.unity3d.player.UnityPlayerGameActivity",
+            "com.unity3d.player.UnityPlayerActivity",
             "",
             "",
             arrayOf(Intent.CATEGORY_DEFAULT),

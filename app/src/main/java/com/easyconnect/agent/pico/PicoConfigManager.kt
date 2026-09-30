@@ -21,6 +21,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resume
 import kotlin.time.Duration.Companion.milliseconds
 
 class PicoConfigManager(
@@ -37,59 +38,48 @@ class PicoConfigManager(
     var picoWifiService: IPicoWifi ?= null
     var picoInformationService: IPicoInformation ?= null
     var picoControlAPP: IPicoControlAPP ?= null
-    suspend fun picoConnection(onConnected: suspend() -> Unit)
-    {
-        if (picoBinding)
-        {
-            Log.e("picoServiceAsProxy","Already binding to PICO")
-            onConnected()
-            return
-        }
-        suspendCancellableCoroutine<Unit> { continuation ->
+    suspend fun picoConnection() : Boolean =
+        suspendCancellableCoroutine { continuation ->
+            if (picoBinding)
+            {
+                Log.e("picoServiceAsProxy","Already bind to PICO")
+                continuation.resume(true)
+                return@suspendCancellableCoroutine
+            }
             picoBinding = true
             picoHelper = ToBServiceHelper.getInstance()
-            picoHelper?.bindTobService(context, object: ToBServiceHelper.BindCallBack
-            {
-                override fun bindCallBack(p0: Boolean?) {
-                    if (p0 == true)
-                    {
-                        val proxy = picoHelper?.serviceBinder as? IToBServiceProxy
-                        val binder = picoHelper?.serviceBinder
 
-                        if (proxy == null) {
-                            Log.e("PICO_BINDER", "serviceBinder is null or invalid")
-                            if (continuation.isActive) {
-                                continuation.resume(Unit) { cause, _, _ -> }
-                            }
-                            return
-                        }
+            picoHelper?.bindTobService(context.applicationContext) { p0 ->
+                val proxy = picoHelper?.serviceBinder as? IToBServiceProxy
+                val binder = picoHelper?.serviceBinder
 
-                        picoFileService = PicoFileSystem(proxy)
-                        picoActivityService = PicoActivity(proxy)
-                        picoDebugService = PicoDebug(proxy)
-                        picoLbeService = PicoLBE(proxy)
-                        picoUtilitiesService = PicoUtilities(proxy)
-                        picoWifiService = PicoWifi(proxy)
-                        picoInformationService = PicoInformation(proxy)
-                        picoControlAPP = PicoControlAPP(context,binder!!, proxy)
-                        Log.e("PICO_BINDER", "picoServiceAsProxy is working")
-                        if (continuation.isActive) {
-                            continuation.resume(Unit) { cause, _, _ -> }
-                        }
-                    }
-                    else
-                    {
-                        picoBinding = false
-                        Log.i("PICO_BINDER", "binding failure")
-                        if (continuation.isActive) {
-                            continuation.resume(Unit) { cause, _, _ -> }
-                        }
-                    }
+                if (proxy == null || binder == null) {
+                    picoBinding = false
+                    Log.e("PICO_BINDER", "serviceBinder is null or invalid")
+                    continuation.resume(false)
+                    return@bindTobService
                 }
-            })
+                if (p0 == true) {
+
+                    picoFileService = PicoFileSystem(proxy)
+                    picoActivityService = PicoActivity(proxy)
+                    picoDebugService = PicoDebug(proxy)
+                    picoLbeService = PicoLBE(proxy)
+                    picoUtilitiesService = PicoUtilities(proxy)
+                    picoWifiService = PicoWifi(proxy)
+                    picoInformationService = PicoInformation(proxy)
+                    picoControlAPP = PicoControlAPP(context, binder, proxy)
+                    Log.e("PICO_BINDER", "picoServiceAsProxy is working")
+                } else {
+                    picoBinding = false
+                    Log.i("PICO_BINDER", "bind failure")
+                }
+
+                if (continuation.isActive) {
+                    continuation.resume(p0 == true)
+                }
+            }
         }
-        onConnected()
-    }
     fun picoDisconnection()
     {
         picoHelper?.unBindTobService(context)

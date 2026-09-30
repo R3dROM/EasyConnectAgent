@@ -22,4 +22,7 @@ interface IPicoConfigurationWriter {
 
         configChange: Boolean
     )
+    fun updatePuiVersion(
+        puiVersion: String?
+    )
 }

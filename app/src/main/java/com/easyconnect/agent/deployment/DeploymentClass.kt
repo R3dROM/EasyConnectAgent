@@ -9,6 +9,7 @@ import com.easyconnect.agent.data.PersistentData
 import com.easyconnect.agent.data.queue.Communicator
 import com.easyconnect.agent.dependency.AgentDependencies
 import com.easyconnect.agent.interfaces.IDeployProcess
+import com.easyconnect.agent.model.CommandType
 import com.easyconnect.agent.model.DeploymentState
 import com.easyconnect.agent.model.JobState
 import com.easyconnect.agent.model.MessageType
@@ -16,6 +17,8 @@ import com.easyconnect.agent.network.report.Report
 import com.easyconnect.agent.utilities.DownloadReport
 import com.easyconnect.agent.utilities.JsonBuilder
 import com.flyfishxu.kadb.Kadb
+import kotlinx.serialization.json.JsonObject
+
 class DeploymentClass(
     extras: Bundle?,
     private val jobId: Long,
@@ -34,6 +37,7 @@ class DeploymentClass(
     private val deploymentStages = mutableListOf<Process>()
     private var currentState: DeploymentState ?= null
     private var timestamp: Long ?= null
+    private var isDeploying = false
 
     private val startTime = SystemClock.elapsedRealtime()
 
@@ -73,9 +77,11 @@ class DeploymentClass(
     }
     suspend fun startDownloadProcess(): Boolean
     {
+        val trimUrl = url?.replace(" ", "%20")
+        Log.i("URL", "URL TO DOWNLOAD: $trimUrl")
         if (downloadClass == null)
             downloadClass = AgentDependencies.createDownloadClass(
-                url = url ?: "null",
+                url = trimUrl ?: "null",
                 jobId = jobId ?: -1,
                 appContext = appContext
             )
@@ -113,6 +119,7 @@ class DeploymentClass(
     override suspend fun start(): Boolean {
         Log.i("DEPLOYMENT_SERVICE", "CREATING DEPLOYMENT PROCESS")
         var deployProcess = false
+        isDeploying = true
         deploymentStages.forEach {
             deployProcess = it.execute.invoke()
             if (!deployProcess)
@@ -129,6 +136,7 @@ class DeploymentClass(
     }
 
     override fun shutdown() {
+        isDeploying = false
         downloadClass?.shutdown()
         moveFiles?.shutdown()
         installApk?.shutdown()
@@ -138,18 +146,38 @@ class DeploymentClass(
     override suspend fun sendReport() {
         val endtime = SystemClock.elapsedRealtime()
         timestamp = endtime - startTime
+        var payload: JsonObject
+        var report: Report
+        if (isDeploying)
+        {
+            payload = JsonBuilder.putExtras(
+                JsonBuilder.extra("status", currentState),
+                JsonBuilder.extra("typeOfJob", CommandType.Deployment)
+            )
 
-        val payload = JsonBuilder.putExtras(
-            JsonBuilder.extra("status", currentState)
-        )
+            report = Report(
+                id = PersistentData.agentConfigurationReader.serialNumber,
+                payload = payload,
+                type = MessageType.Acknowledge,
+                timestamp = timestamp,
+                jobId = jobId
+            )
+        }
+        else
+        {
+            payload = JsonBuilder.putExtras(
+                JsonBuilder.extra("status", DeploymentState.Complete),
+                JsonBuilder.extra("typeOfJob", CommandType.Cancellation)
+            )
 
-        val report = Report(
-            id = PersistentData.agentConfigurationReader.serialNumber,
-            payload = payload,
-            type = MessageType.Acknowledge,
-            timestamp = timestamp,
-            jobId = jobId
-        )
+            report = Report(
+                id = PersistentData.agentConfigurationReader.serialNumber,
+                payload = payload,
+                type = MessageType.Acknowledge,
+                timestamp = timestamp,
+                jobId = jobId
+            )
+        }
         Communicator.publishReport(report)
     }
 }

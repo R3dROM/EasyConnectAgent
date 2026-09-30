@@ -24,7 +24,7 @@ class PicoUtilities(
         override fun callback(p0: Int) {
             Log.i(
                 "PICOBinder",
-                "Callback: $p0"
+                "Callback Utility: $p0"
             )
         }
     }
@@ -45,7 +45,7 @@ class PicoUtilities(
         intCallback
     )
     override fun setSleepDelay() = service.pbsPropertySetSleepDelay(
-        PBS_SleepDelayTimeEnum.ONE_THOUSAND_AND_EIGHT_HUNDRED
+        PBS_SleepDelayTimeEnum.NEVER
     )
     override fun setAutoSleep() : Int = service.setSystemAutoSleepTime(
         PBS_SleepDelayTimeEnum.NEVER
