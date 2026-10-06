@@ -11,7 +11,7 @@ import com.easyconnect.agent.data.PersistentData
 import com.easyconnect.agent.data.queue.Communicator
 import com.easyconnect.agent.interfaces.IPicoActivity
 import com.easyconnect.agent.model.ActivityType
-import com.easyconnect.agent.model.CommandType
+import com.easyconnect.agent.model.JobType
 import com.easyconnect.agent.model.JobState
 import com.easyconnect.agent.model.MessageType
 import com.easyconnect.agent.network.report.Report
@@ -45,11 +45,12 @@ class CommandManager(
                 val intentResult = createIntent(command)
                 sendIntent(intentResult)
 
-                if (command.commandType != CommandType.Connection)
+                if (command.jobType != JobType.Connection)
                 {
                     val payload = JsonBuilder.putExtras(
-                        JsonBuilder.extra("status", JobState.Executing),
-                        JsonBuilder.extra("typeOfJob", command.commandType)
+                        JsonBuilder.extra("status", JobState.Receive),
+                        JsonBuilder.extra("typeOfJob", command.jobType),
+                        JsonBuilder.extra("jobId", command.id)
                     )
                     val report = Report(
                         id = PersistentData.agentConfigurationReader.serialNumber,
@@ -64,9 +65,9 @@ class CommandManager(
     }
     fun createIntent(command: Command): Intent
     {
-        val type = command.commandType
+        val type = command.jobType
         val className = when (type) {
-            CommandType.Connection -> AgentConfiguration.WEBSOCKET_CLASS_NAME
+            JobType.Connection -> AgentConfiguration.WEBSOCKET_CLASS_NAME
             else -> AgentConfiguration.EASY_AGENT_SERVICE_CLASS_NAME
         }
         val intent = Intent().apply {
@@ -74,7 +75,7 @@ class CommandManager(
                 AgentConfiguration.PACKAGE_NAME,
                 className
             )
-            putExtra(ActivityConfiguration.TARGET,command.commandType)
+            putExtra(ActivityConfiguration.TARGET,command.jobType)
             putExtra(ActivityConfiguration.JOB_ID, command.id)
             command.extras?.let { putExtra(ActivityConfiguration.EXTRAS, command.extras!!.toBundle()) }
             command.options?.let { putExtra(ActivityConfiguration.OPTIONS, command.options!!.toBundle())}

@@ -9,12 +9,10 @@ import com.easyconnect.agent.data.PersistentData
 import com.easyconnect.agent.data.queue.Communicator
 import com.easyconnect.agent.dependency.AgentDependencies
 import com.easyconnect.agent.interfaces.IDeployProcess
-import com.easyconnect.agent.model.CommandType
+import com.easyconnect.agent.model.JobType
 import com.easyconnect.agent.model.DeploymentState
-import com.easyconnect.agent.model.JobState
 import com.easyconnect.agent.model.MessageType
 import com.easyconnect.agent.network.report.Report
-import com.easyconnect.agent.utilities.DownloadReport
 import com.easyconnect.agent.utilities.JsonBuilder
 import com.flyfishxu.kadb.Kadb
 import kotlinx.serialization.json.JsonObject
@@ -152,7 +150,7 @@ class DeploymentClass(
         {
             payload = JsonBuilder.putExtras(
                 JsonBuilder.extra("status", currentState),
-                JsonBuilder.extra("typeOfJob", CommandType.Deployment)
+                JsonBuilder.extra("typeOfJob", JobType.Deployment)
             )
 
             report = Report(
@@ -167,7 +165,7 @@ class DeploymentClass(
         {
             payload = JsonBuilder.putExtras(
                 JsonBuilder.extra("status", DeploymentState.Complete),
-                JsonBuilder.extra("typeOfJob", CommandType.Cancellation)
+                JsonBuilder.extra("typeOfJob", JobType.Cancellation)
             )
 
             report = Report(

@@ -3,7 +3,6 @@ package com.easyconnect.agent.network.websocket
 import android.content.Context
 import android.os.BatteryManager
 import android.util.Log
-import com.easyconnect.agent.configuration.agent.AgentConfiguration
 import com.easyconnect.agent.data.queue.Communicator
 import com.easyconnect.agent.model.DeviceStatus
 import com.easyconnect.agent.model.MessageType
@@ -20,7 +19,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
@@ -36,7 +34,6 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.ExperimentalTime
 
 class WebSocketClass(
     private var url : String,
@@ -110,7 +107,7 @@ class WebSocketClass(
             Log.i("WEB_SOCKET_CONNECTION", "Trying connection to : " + this.url)
             val request = Request.Builder()
                 .url(url)
-                .addHeader("key", "PICO")
+                .addHeader("key", "AGENT")
                 .addHeader("serial", PersistentData.agentConfigurationReader.serialNumber)
                 .build()
             socket = client?.newWebSocket(request, socketListener)
@@ -175,7 +172,7 @@ class WebSocketClass(
             JsonBuilder.extra("ip", PersistentData.agentConfigurationReader.ip),
             JsonBuilder.extra("serialNumber", PersistentData.agentConfigurationReader.serialNumber),
             JsonBuilder.extra("deviceNumber", PersistentData.agentConfigurationReader.deviceNumber.toInt()),
-            JsonBuilder.extra("puiVersion", PersistentData.picoConfigurationReader.puiVersion),
+            JsonBuilder.extra("firmwareVersion", PersistentData.picoConfigurationReader.puiVersion),
             JsonBuilder.extra("status", DeviceStatus.Online)
         )
         val report = Report(
@@ -224,7 +221,7 @@ class WebSocketClass(
 
                 val report = Report(
                     id = PersistentData.agentConfigurationReader.serialNumber,
-                    type = MessageType.Battery,
+                    type = MessageType.Hardware,
                     payload = payload
                 )
                 Communicator.publishReport(report)
