@@ -3,7 +3,7 @@ package com.easyconnect.agent.network.connectionManager
 import android.util.Log
 import com.easyconnect.agent.commandManager.Command
 import com.easyconnect.agent.configuration.ActivityConfiguration
-import com.easyconnect.agent.model.CommandType
+import com.easyconnect.agent.model.JobType
 import com.easyconnect.agent.network.MDnsClient
 import com.easyconnect.agent.network.interpreter.Interpreter
 import com.easyconnect.agent.pico.PicoConfigManager
@@ -55,7 +55,7 @@ object ConnectionManager {
         )
         val startWebSocketCommand = Command(
             id = 1,
-            commandType = CommandType.Connection,
+            jobType = JobType.Connection,
             extras = extras
         )
 

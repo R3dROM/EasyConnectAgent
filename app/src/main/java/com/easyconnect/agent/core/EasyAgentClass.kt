@@ -5,7 +5,6 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import com.easyconnect.agent.commandManager.CommandManager
-import com.easyconnect.agent.configuration.ActivityConfiguration
 import com.easyconnect.agent.data.PersistentData
 import com.easyconnect.agent.data.queue.Communicator
 import com.easyconnect.agent.deployment.DeploymentClass
@@ -15,7 +14,7 @@ import com.easyconnect.agent.model.JobState
 import com.easyconnect.agent.model.MessageType
 import com.easyconnect.agent.network.MDnsClient
 import com.easyconnect.agent.model.ActivityType
-import com.easyconnect.agent.model.CommandType
+import com.easyconnect.agent.model.JobType
 import com.easyconnect.agent.network.connectionManager.ConnectionManager
 import com.easyconnect.agent.network.report.Report
 import com.easyconnect.agent.pico.PicoConfigManager
@@ -56,6 +55,54 @@ class EasyAgentClass(
     /////////////////////////////
     // COMMAND MANAGER O INTERPRETER
 
+    suspend fun startExperience(appName: String, jobId: Long)
+    {
+        val result = picoManager?.picoActivityService?.startActivity(
+            appName,
+        )
+
+        Log.i("ACTIVITY", "Result: $result")
+        val payload = JsonBuilder.putExtras(
+            JsonBuilder.extra("status", when
+            {
+                result == 0 -> JobState.Complete
+                else -> JobState.Fail
+            }),
+            JsonBuilder.extra("typeOfJob", JobType.StartExperience)
+        )
+        val report = Report(
+            id = PersistentData.agentConfigurationReader.serialNumber,
+            type = MessageType.Acknowledge,
+            timestamp = 0,
+            jobId = jobId,
+            payload = payload
+        )
+        Communicator.publishReport(report)
+    }
+    suspend fun uninstallExperience(appName: String, jobId: Long)
+    {
+        val result = picoManager?.picoControlAPP?.silentUninstall(
+            appName,
+        )
+
+        Log.i("ACTIVITY", "Result: $result")
+        val payload = JsonBuilder.putExtras(
+            JsonBuilder.extra("status", when
+            {
+                result == 0 -> JobState.Complete
+                else -> JobState.Fail
+            }),
+            JsonBuilder.extra("typeOfJob", JobType.UninstallExperience)
+        )
+        val report = Report(
+            id = PersistentData.agentConfigurationReader.serialNumber,
+            type = MessageType.Acknowledge,
+            timestamp = 0,
+            jobId = jobId,
+            payload = payload
+        )
+        Communicator.publishReport(report)
+    }
     suspend fun startActivityManager(jobId: Long, extras: Bundle?, options: Bundle?)
     {
         Log.i("TYPE OF OPTIONS", "EXTRAS IS ${extras?.getString("bundle") ?: "NO"}")
@@ -101,7 +148,7 @@ class EasyAgentClass(
                 result == 0 -> JobState.Complete
                 else -> JobState.Fail
             }),
-            JsonBuilder.extra("typeOfJob", CommandType.Activity)
+            JsonBuilder.extra("typeOfJob", JobType.Activity)
         )
         val report = Report(
             id = PersistentData.agentConfigurationReader.serialNumber,

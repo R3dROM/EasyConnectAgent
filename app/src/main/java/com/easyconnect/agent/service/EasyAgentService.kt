@@ -10,7 +10,8 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.easyconnect.agent.configuration.ActivityConfiguration
 import com.easyconnect.agent.core.EasyAgentClass
-import com.easyconnect.agent.model.CommandType
+import com.easyconnect.agent.model.JobType
+import com.easyconnect.agent.utilities.DownloadReport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,13 +41,13 @@ class EasyAgentService : Service()
         val command = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent?.getSerializableExtra(
                 ActivityConfiguration.TARGET,
-                CommandType::class.java
+                JobType::class.java
             )
         } else {
             @Suppress("DEPRECATION")
             intent?.getSerializableExtra(
                 ActivityConfiguration.TARGET
-            ) as? CommandType?
+            ) as? JobType?
         }
         val jobId = intent?.getLongExtra(ActivityConfiguration.JOB_ID, -1) ?: -1
         val extras = intent?.getBundleExtra(ActivityConfiguration.EXTRAS)
@@ -58,7 +59,7 @@ class EasyAgentService : Service()
         Log.i("INTENT", "receive: $options & $extras" )
         when
         {
-            command == CommandType.Cancellation -> {
+            command == JobType.Cancellation -> {
                 if (cancellation) {
                     Log.i("DEPLOYMENT SERVICE", "Cancelling deployment")
 
@@ -76,7 +77,7 @@ class EasyAgentService : Service()
                     Log.i("DEPLOYMENT SERVICE", "DEPLOYMENT: $result")
                 }
             }
-            command == CommandType.Deployment -> {
+            command == JobType.Deployment -> {
                 deploymentJob = serviceScope.launch {
                     val result = easyAgentClass?.startDeploymentService(jobId, extras, options)
                     if (result == false)
@@ -84,9 +85,16 @@ class EasyAgentService : Service()
                     Log.i("DEPLOYMENT SERVICE", "DEPLOYMENT: $result")
                 }
             }
-            command ==  CommandType.Activity -> {
-                experienceJob = serviceScope.launch {
-                    easyAgentClass?.startActivityManager(jobId,extras, options)
+            command == JobType.StartExperience -> {
+                deploymentJob = serviceScope.launch {
+                    val appName = extras?.getString("bundle") ?: DownloadReport.bundle
+                    val result = easyAgentClass?.startExperience(appName, jobId)
+                }
+            }
+            command == JobType.UninstallExperience -> {
+                deploymentJob = serviceScope.launch {
+                    val appName = extras?.getString("bundle") ?: DownloadReport.bundle
+                    val result = easyAgentClass?.uninstallExperience(appName, jobId)
                 }
             }
         }
